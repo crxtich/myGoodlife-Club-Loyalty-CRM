@@ -5,11 +5,11 @@ export type ChannelType = Database["public"]["Enums"]["channel_type"];
 
 export const SEGMENT_LABELS: Record<MemberSegment, string> = {
   active: "Active",
-  new: "New",
+  new: "Never Activated",
   at_risk: "At Risk",
-  churned_60_90: "Churned 60–90d",
-  churned_90_180: "Churned 90–180d",
-  churned_180_plus: "Churned 180d+",
+  churned_60_90: "Churned (Early)",
+  churned_90_180: "Churned (Deep)",
+  churned_180_plus: "Lapsed 1 Year+",
 };
 
 export const SEGMENT_COLORS: Record<MemberSegment, string> = {
@@ -23,11 +23,11 @@ export const SEGMENT_COLORS: Record<MemberSegment, string> = {
 
 export const SEGMENT_DESCRIPTIONS: Record<MemberSegment, string> = {
   active: "Purchased within 30 days",
-  new: "Joined in last 30 days, ≤1 purchase",
-  at_risk: "Last purchase 30–60 days ago",
-  churned_60_90: "No purchase in 60–90 days",
-  churned_90_180: "No purchase in 90–180 days",
-  churned_180_plus: "No purchase in 180+ days",
+  new: "Signed up, no purchase recorded",
+  at_risk: "31–59 days since last purchase",
+  churned_60_90: "60–89 days since last purchase",
+  churned_90_180: "90–364 days since last purchase",
+  churned_180_plus: "365+ days since last purchase",
 };
 
 export const SEGMENT_ACTIONS: Record<MemberSegment, string> = {
