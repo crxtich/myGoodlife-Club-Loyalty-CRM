@@ -30,6 +30,15 @@ export const SEGMENT_DESCRIPTIONS: Record<MemberSegment, string> = {
   churned_180_plus: "No purchase in 180+ days",
 };
 
+export const SEGMENT_ACTIONS: Record<MemberSegment, string> = {
+  active: "Engagement campaign — reward and upsell",
+  new: "Activation campaign — first purchase incentive",
+  at_risk: "Retention campaign — personalised reminder",
+  churned_60_90: "Reactivation — moderate incentive offer",
+  churned_90_180: "Reactivation — high priority, strong offer",
+  churned_180_plus: "Win-back or remove from active list",
+};
+
 export const CHANNEL_LABELS: Record<ChannelType, string> = {
   in_store: "In-store",
   online: "Online",

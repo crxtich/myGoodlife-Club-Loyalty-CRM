@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { KpiCard } from "@/components/KpiCard";
 import { Card } from "@/components/ui/card";
 import { SegmentBadge } from "@/components/SegmentBadge";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { MemberSegment, SEGMENT_LABELS, formatKES } from "@/lib/segments";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, PieChart, Pie } from "recharts";
 
@@ -54,6 +55,7 @@ const Dashboard = () => {
   const activeRate = stats.total > 0 ? Math.round((stats.active / stats.total) * 100) : 0;
 
   return (
+    <TooltipProvider delayDuration={300}>
     <div className="space-y-8">
       <div>
         <p className="text-sm text-muted-foreground font-medium uppercase tracking-wider">Overview</p>
@@ -127,6 +129,7 @@ const Dashboard = () => {
         </Card>
       )}
     </div>
+    </TooltipProvider>
   );
 };
 
