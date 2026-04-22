@@ -66,7 +66,7 @@ const Dashboard = () => {
         <KpiCard label="Active (30d)" value={stats.active.toLocaleString()} icon={Activity} accent="success" trend="Purchased recently" />
         <KpiCard label="At Risk" value={stats.atRisk.toLocaleString()} icon={AlertTriangle} accent="warning" trend="30–60 days inactive" />
         <KpiCard label="Churned" value={stats.churned.toLocaleString()} icon={TrendingUp} accent="destructive" trend="60+ days inactive" />
-        <KpiCard label="Lifetime Value" value={formatKES(stats.lifetimeValue).replace(" ", "\n")} icon={Banknote} accent="accent" />
+        <KpiCard label="Lifetime Value" value={`Ksh\n${stats.lifetimeValue.toLocaleString("en-KE", { maximumFractionDigits: 0 })}`} icon={Banknote} accent="accent" />
         <KpiCard label="Campaigns Run" value={stats.campaigns} icon={Megaphone} accent="primary" />
         <KpiCard label="CSV Exports" value={stats.exports} icon={FileDown} accent="primary" />
         <KpiCard label="Health Score" value={`${activeRate}/100`} icon={Activity} accent={activeRate >= 40 ? "success" : "warning"} trend="Active member rate" />
