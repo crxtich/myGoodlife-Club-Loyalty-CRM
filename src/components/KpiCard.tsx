@@ -25,7 +25,7 @@ export const KpiCard = ({ label, value, trend, icon: Icon, accent = "primary" }:
     </div>
     <div className="pr-14">
       <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium">{label}</p>
-      <p className="mt-2 text-3xl font-display font-bold text-foreground">{value}</p>
+      <p className="mt-2 text-3xl font-display font-bold text-foreground whitespace-pre-line">{value}</p>
       {trend && <p className="mt-1 text-xs text-muted-foreground">{trend}</p>}
     </div>
   </Card>
