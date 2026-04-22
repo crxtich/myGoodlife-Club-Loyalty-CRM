@@ -4,8 +4,23 @@ import { supabase } from "@/integrations/supabase/client";
 import { KpiCard } from "@/components/KpiCard";
 import { Card } from "@/components/ui/card";
 import { SegmentBadge } from "@/components/SegmentBadge";
-import { MemberSegment, SEGMENT_LABELS, formatKES } from "@/lib/segments";
+import { MemberSegment, SEGMENT_LABELS, SEGMENT_DESCRIPTIONS, SEGMENT_ACTIONS, formatKES } from "@/lib/segments";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, PieChart, Pie } from "recharts";
+
+const BarTooltip = ({ active, payload }: any) => {
+  if (!active || !payload?.length) return null;
+  const { name, count, segment } = payload[0].payload as { name: string; count: number; segment: MemberSegment };
+  return (
+    <div className="bg-card border border-border rounded-lg p-3 shadow-md w-52">
+      <p className="font-semibold text-sm">{name}</p>
+      <p className="text-xs text-muted-foreground mt-1">{SEGMENT_DESCRIPTIONS[segment]}</p>
+      <div className="border-t border-border mt-2 pt-2 space-y-1">
+        <p className="text-xs tabular-nums"><span className="font-medium">Members:</span> {count.toLocaleString()}</p>
+        <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground">Action:</span> {SEGMENT_ACTIONS[segment]}</p>
+      </div>
+    </div>
+  );
+};
 
 const Dashboard = () => {
   const [stats, setStats] = useState({
@@ -78,10 +93,10 @@ const Dashboard = () => {
           <p className="text-sm text-muted-foreground mb-4">Lifecycle distribution across the member base.</p>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={segmentData.map((d) => ({ name: SEGMENT_LABELS[d.segment], count: d.count, fill: segColors[d.segment] }))} margin={{ bottom: 48 }}>
+              <BarChart data={segmentData.map((d) => ({ name: SEGMENT_LABELS[d.segment], count: d.count, segment: d.segment }))} margin={{ bottom: 48 }}>
                 <XAxis dataKey="name" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} stroke="hsl(var(--muted-foreground))" interval={0} angle={-35} textAnchor="end" height={60} />
                 <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
-                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
+                <Tooltip content={<BarTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }} />
                 <Bar dataKey="count" radius={[6, 6, 0, 0]}>
                   {segmentData.map((d, i) => <Cell key={i} fill={segColors[d.segment]} />)}
                 </Bar>
