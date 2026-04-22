@@ -8,9 +8,11 @@ export const SegmentBadge = ({ segment, className }: { segment: MemberSegment | 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Badge variant="outline" className={cn("font-medium border cursor-help", SEGMENT_COLORS[segment], className)}>
-          {SEGMENT_LABELS[segment]}
-        </Badge>
+        <span className="inline-flex cursor-help">
+          <Badge variant="outline" className={cn("font-medium border", SEGMENT_COLORS[segment], className)}>
+            {SEGMENT_LABELS[segment]}
+          </Badge>
+        </span>
       </TooltipTrigger>
       <TooltipContent side="top" className="max-w-[220px] p-3 space-y-1.5">
         <p className="font-semibold text-sm">{SEGMENT_LABELS[segment]}</p>

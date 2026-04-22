@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
-import { Users, TrendingUp, AlertTriangle, Activity, Megaphone, FileDown } from "lucide-react";
+import { Users, TrendingUp, AlertTriangle, Activity, Megaphone, FileDown, Banknote } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { KpiCard } from "@/components/KpiCard";
 import { Card } from "@/components/ui/card";
 import { SegmentBadge } from "@/components/SegmentBadge";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { MemberSegment, SEGMENT_LABELS, formatKES } from "@/lib/segments";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, PieChart, Pie } from "recharts";
 
@@ -55,7 +54,6 @@ const Dashboard = () => {
   const activeRate = stats.total > 0 ? Math.round((stats.active / stats.total) * 100) : 0;
 
   return (
-    <TooltipProvider delayDuration={300}>
     <div className="space-y-8">
       <div>
         <p className="text-sm text-muted-foreground font-medium uppercase tracking-wider">Overview</p>
@@ -68,7 +66,7 @@ const Dashboard = () => {
         <KpiCard label="Active (30d)" value={stats.active.toLocaleString()} icon={Activity} accent="success" trend="Purchased recently" />
         <KpiCard label="At Risk" value={stats.atRisk.toLocaleString()} icon={AlertTriangle} accent="warning" trend="30–60 days inactive" />
         <KpiCard label="Churned" value={stats.churned.toLocaleString()} icon={TrendingUp} accent="destructive" trend="60+ days inactive" />
-        <KpiCard label="Lifetime Value" value={formatKES(stats.lifetimeValue)} icon={TrendingUp} accent="accent" />
+        <KpiCard label="Lifetime Value" value={formatKES(stats.lifetimeValue)} icon={Banknote} accent="accent" />
         <KpiCard label="Campaigns Run" value={stats.campaigns} icon={Megaphone} accent="primary" />
         <KpiCard label="CSV Exports" value={stats.exports} icon={FileDown} accent="primary" />
         <KpiCard label="Health Score" value={`${activeRate}/100`} icon={Activity} accent={activeRate >= 40 ? "success" : "warning"} trend="Active member rate" />
@@ -129,7 +127,6 @@ const Dashboard = () => {
         </Card>
       )}
     </div>
-    </TooltipProvider>
   );
 };
 
