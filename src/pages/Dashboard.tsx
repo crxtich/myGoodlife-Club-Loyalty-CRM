@@ -76,10 +76,10 @@ const Dashboard = () => {
         <Card className="lg:col-span-2 p-6 gradient-card">
           <h3 className="font-display text-lg font-semibold">Members by segment</h3>
           <p className="text-sm text-muted-foreground mb-4">Lifecycle distribution across the member base.</p>
-          <div className="h-64">
+          <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={segmentData.map((d) => ({ name: SEGMENT_LABELS[d.segment], count: d.count, fill: segColors[d.segment] }))}>
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
+              <BarChart data={segmentData.map((d) => ({ name: SEGMENT_LABELS[d.segment], count: d.count, fill: segColors[d.segment] }))} margin={{ bottom: 48 }}>
+                <XAxis dataKey="name" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} stroke="hsl(var(--muted-foreground))" interval={0} angle={-35} textAnchor="end" height={60} />
                 <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
                 <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
                 <Bar dataKey="count" radius={[6, 6, 0, 0]}>
