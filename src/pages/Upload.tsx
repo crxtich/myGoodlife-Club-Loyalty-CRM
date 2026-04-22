@@ -1,16 +1,21 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import * as XLSX from "xlsx";
 import Papa from "papaparse";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Upload as UploadIcon, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { Upload as UploadIcon, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { classifyMember, ChannelType } from "@/lib/segments";
 import { useAuth } from "@/contexts/AuthContext";
 import { Database } from "@/integrations/supabase/types";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type Insert = Database["public"]["Tables"]["members"]["Insert"];
+type UploadBatch = Database["public"]["Tables"]["upload_batches"]["Row"];
 
 interface ParsedRow { [key: string]: any }
 
@@ -53,7 +58,6 @@ function normalizeChannel(v: any): ChannelType | null {
 function normalizeDate(v: any): string | null {
   if (!v) return null;
   if (v instanceof Date) return v.toISOString().slice(0, 10);
-  // Excel serial number
   if (typeof v === "number" && v > 25569 && v < 60000) {
     const date = XLSX.SSF.parse_date_code(v);
     if (date) return `${date.y}-${String(date.m).padStart(2, "0")}-${String(date.d).padStart(2, "0")}`;
@@ -72,7 +76,21 @@ const Upload = () => {
   const { user } = useAuth();
   const [busy, setBusy] = useState(false);
   const [summary, setSummary] = useState<UploadSummary | null>(null);
+  const [batches, setBatches] = useState<UploadBatch[]>([]);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { loadBatches(); }, []);
+
+  async function loadBatches() {
+    const { data } = await supabase
+      .from("upload_batches")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(20);
+    setBatches(data || []);
+  }
 
   async function parseFile(file: File): Promise<ParsedRow[]> {
     const ext = file.name.split(".").pop()?.toLowerCase();
@@ -137,22 +155,17 @@ const Upload = () => {
         });
       });
 
-      // Find existing members
       const ids = records.map((r) => r.member_id);
       const { data: existing } = await supabase.from("members").select("member_id").in("member_id", ids);
       const existingIds = new Set((existing || []).map((m) => m.member_id));
       const newCount = records.filter((r) => !existingIds.has(r.member_id)).length;
       const updateCount = records.length - newCount;
 
-      // Upsert in batches of 500
       const BATCH = 500;
       for (let i = 0; i < records.length; i += BATCH) {
         const chunk = records.slice(i, i + BATCH);
         const { error } = await supabase.from("members").upsert(chunk, { onConflict: "member_id" });
-        if (error) {
-          toast.error(`Insert error: ${error.message}`);
-          break;
-        }
+        if (error) { toast.error(`Insert error: ${error.message}`); break; }
       }
 
       if (user) {
@@ -168,11 +181,31 @@ const Upload = () => {
 
       setSummary({ processed: rows.length, newMembers: newCount, updatedMembers: updateCount, errors });
       toast.success(`Imported ${records.length} members (${newCount} new, ${updateCount} updated)`);
+      loadBatches();
     } catch (e: any) {
       toast.error(e.message || "Upload failed");
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleDeleteBatch(id: string) {
+    const { error } = await supabase.from("upload_batches").delete().eq("id", id);
+    if (error) { toast.error("Could not remove batch log"); return; }
+    setBatches((b) => b.filter((x) => x.id !== id));
+    toast.success("Batch log removed");
+  }
+
+  async function handleClearAll() {
+    setClearing(true);
+    const { error: membersErr } = await supabase.from("members").delete().not("id", "is", null);
+    if (membersErr) { toast.error(`Clear failed: ${membersErr.message}`); setClearing(false); return; }
+    await supabase.from("upload_batches").delete().not("id", "is", null);
+    setBatches([]);
+    setSummary(null);
+    setConfirmClear(false);
+    setClearing(false);
+    toast.success("All member data cleared — system reset to zero");
   }
 
   function downloadTemplate() {
@@ -240,6 +273,36 @@ const Upload = () => {
         </Card>
       )}
 
+      {batches.length > 0 && (
+        <Card className="p-6">
+          <h3 className="font-display font-semibold mb-4">Upload history</h3>
+          <div className="space-y-2">
+            {batches.map((b) => (
+              <div key={b.id} className="flex items-center justify-between gap-4 py-2 border-b border-border last:border-0">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{b.file_name || "Unnamed file"}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(b.created_at).toLocaleString("en-KE", { dateStyle: "medium", timeStyle: "short" })} ·{" "}
+                    {b.new_members} new · {b.updated_members} updated
+                    {b.errors > 0 && <span className="text-destructive"> · {b.errors} errors</span>}
+                  </p>
+                </div>
+                <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground hover:text-destructive"
+                  onClick={() => handleDeleteBatch(b.id)} title="Remove log entry">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      <Card className="p-6 border-destructive/40">
+        <h3 className="font-display font-semibold text-destructive mb-1">Danger zone</h3>
+        <p className="text-sm text-muted-foreground mb-4">Permanently delete all member records and reset the programme to zero. This cannot be undone.</p>
+        <Button variant="destructive" onClick={() => setConfirmClear(true)}>Clear all member data</Button>
+      </Card>
+
       <Card className="p-6">
         <h3 className="font-display font-semibold mb-3">Expected columns</h3>
         <p className="text-sm text-muted-foreground mb-4">Column names are matched flexibly (case-insensitive, spaces & underscores ignored).</p>
@@ -263,16 +326,30 @@ const Upload = () => {
           ))}
         </div>
       </Card>
+
+      <AlertDialog open={confirmClear} onOpenChange={setConfirmClear}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear all member data?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete every member record and all upload history. The Dashboard will reset to zero. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={clearing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleClearAll} disabled={clearing}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {clearing ? "Clearing…" : "Yes, clear everything"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
 
 const Stat = ({ label, value, accent }: { label: string; value: number; accent: "primary" | "success" | "destructive" }) => {
-  const colors = {
-    primary: "text-primary",
-    success: "text-success",
-    destructive: "text-destructive",
-  };
+  const colors = { primary: "text-primary", success: "text-success", destructive: "text-destructive" };
   return (
     <div>
       <p className="text-xs uppercase tracking-wider text-muted-foreground">{label}</p>

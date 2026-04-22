@@ -14,7 +14,6 @@ import { Search, FileDown } from "lucide-react";
 import Papa from "papaparse";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-import { TooltipProvider } from "@/components/ui/tooltip";
 
 type Member = Database["public"]["Tables"]["members"]["Row"];
 
@@ -84,7 +83,6 @@ const Members = () => {
   const segments: MemberSegment[] = ["active", "new", "at_risk", "churned_60_90", "churned_90_180", "churned_180_plus"];
 
   return (
-    <TooltipProvider delayDuration={300}>
     <div className="space-y-6">
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
@@ -160,7 +158,6 @@ const Members = () => {
         </Table>
       </Card>
     </div>
-    </TooltipProvider>
   );
 };
 
