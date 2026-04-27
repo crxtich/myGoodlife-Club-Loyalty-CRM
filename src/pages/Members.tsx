@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/table";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { SegmentBadge } from "@/components/SegmentBadge";
-import { MemberSegment, SEGMENT_LABELS, CHANNEL_LABELS, formatKES } from "@/lib/segments";
+import { MemberSegment, SEGMENT_LABELS, CHANNEL_LABELS, formatKES, classifyMember } from "@/lib/segments";
 import { Database } from "@/integrations/supabase/types";
 import { Search, FileDown } from "lucide-react";
 import Papa from "papaparse";
@@ -34,8 +34,10 @@ const Members = () => {
   }
 
   const filtered = useMemo(() => {
+    const today = new Date();
     return members.filter((m) => {
-      if (segmentFilter !== "all" && m.segment !== segmentFilter) return false;
+      const liveSegment = classifyMember(m.last_purchase_date, m.join_date, m.total_purchases ?? 0, today).segment;
+      if (segmentFilter !== "all" && liveSegment !== segmentFilter) return false;
       if (search) {
         const q = search.toLowerCase();
         return m.name?.toLowerCase().includes(q) || m.phone?.includes(q) || m.email?.toLowerCase().includes(q) || m.member_id?.toLowerCase().includes(q);
@@ -46,12 +48,13 @@ const Members = () => {
 
   async function handleExport() {
     if (filtered.length === 0) { toast.error("No members to export"); return; }
+    const today = new Date();
     const rows = filtered.map((m) => ({
       member_id: m.member_id,
       name: m.name,
       phone: m.phone || "",
       email: m.email || "",
-      segment: m.segment ? SEGMENT_LABELS[m.segment as MemberSegment] : "",
+      segment: SEGMENT_LABELS[classifyMember(m.last_purchase_date, m.join_date, m.total_purchases ?? 0, today).segment],
       priority_score: m.priority_score,
       preferred_channel: m.preferred_channel ? CHANNEL_LABELS[m.preferred_channel] : "",
       last_purchase_date: m.last_purchase_date || "",
@@ -142,7 +145,7 @@ const Members = () => {
                   <div className="text-sm">{m.phone || "—"}</div>
                   <div className="text-xs text-muted-foreground">{m.email || "—"}</div>
                 </TableCell>
-                <TableCell><SegmentBadge segment={m.segment as MemberSegment | null} /></TableCell>
+                <TableCell><SegmentBadge segment={classifyMember(m.last_purchase_date, m.join_date, m.total_purchases ?? 0).segment} /></TableCell>
                 <TableCell className="text-sm">{m.preferred_channel ? CHANNEL_LABELS[m.preferred_channel] : "—"}</TableCell>
                 <TableCell className="text-right tabular-nums">{m.total_purchases}</TableCell>
                 <TableCell className="text-right tabular-nums font-medium">{formatKES(Number(m.total_spend))}</TableCell>

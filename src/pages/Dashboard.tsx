@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { KpiCard } from "@/components/KpiCard";
 import { Card } from "@/components/ui/card";
 import { SegmentBadge } from "@/components/SegmentBadge";
-import { MemberSegment, SEGMENT_LABELS, SEGMENT_DESCRIPTIONS, SEGMENT_ACTIONS, formatKES } from "@/lib/segments";
+import { MemberSegment, SEGMENT_LABELS, SEGMENT_DESCRIPTIONS, SEGMENT_ACTIONS, formatKES, classifyMember } from "@/lib/segments";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, PieChart, Pie } from "recharts";
 
 const BarTooltip = ({ active, payload }: any) => {
@@ -31,14 +31,16 @@ const Dashboard = () => {
   useEffect(() => {
     (async () => {
       const { count: total } = await supabase.from("members").select("*", { count: "exact", head: true });
-      const { data: members } = await supabase.from("members").select("segment, total_spend");
+      const { data: members } = await supabase.from("members").select("last_purchase_date, join_date, total_purchases, total_spend");
       const { count: campaigns } = await supabase.from("campaigns").select("*", { count: "exact", head: true });
       const { count: exports } = await supabase.from("campaign_exports").select("*", { count: "exact", head: true });
 
       const counts: Record<string, number> = {};
       let ltv = 0;
+      const today = new Date();
       members?.forEach((m) => {
-        if (m.segment) counts[m.segment] = (counts[m.segment] || 0) + 1;
+        const { segment } = classifyMember(m.last_purchase_date, m.join_date, m.total_purchases ?? 0, today);
+        counts[segment] = (counts[segment] || 0) + 1;
         ltv += Number(m.total_spend || 0);
       });
 
