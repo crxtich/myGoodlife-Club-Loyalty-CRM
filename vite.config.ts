@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react-swc";
 import path from "path";
 
 export default defineConfig(() => ({
+  base: "/myGoodlife-Club-Loyalty-CRM/",
   server: {
     host: "::",
     port: 8080,
