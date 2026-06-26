@@ -75,7 +75,7 @@ const Dashboard = () => {
       <div>
         <p className="text-sm text-muted-foreground font-medium uppercase tracking-wider">Overview</p>
         <h1 className="font-display text-3xl font-bold mt-1">Programme health</h1>
-        <p className="text-muted-foreground mt-1">Live snapshot of the myGoodlife Club member base.</p>
+        <p className="text-muted-foreground mt-1">Live snapshot of the My Goodlife Club member base across Kenya and Uganda.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -83,7 +83,7 @@ const Dashboard = () => {
         <KpiCard label="Active (30d)" value={stats.active.toLocaleString()} icon={Activity} accent="success" trend="Purchased recently" />
         <KpiCard label="At Risk" value={stats.atRisk.toLocaleString()} icon={AlertTriangle} accent="warning" trend="30–60 days inactive" />
         <KpiCard label="Churned" value={stats.churned.toLocaleString()} icon={TrendingUp} accent="destructive" trend="60+ days inactive" />
-        <KpiCard label="Lifetime Value" value={`Ksh\n${stats.lifetimeValue.toLocaleString("en-KE", { maximumFractionDigits: 0 })}`} icon={Banknote} accent="accent" />
+        <KpiCard label="Lifetime Value" value={`KES ${stats.lifetimeValue.toLocaleString("en-KE", { maximumFractionDigits: 0 })}`} icon={Banknote} accent="accent" />
         <KpiCard label="Campaigns Run" value={stats.campaigns} icon={Megaphone} accent="primary" />
         <KpiCard label="CSV Exports" value={stats.exports} icon={FileDown} accent="primary" />
         <KpiCard label="Health Score" value={`${activeRate}/100`} icon={Activity} accent={activeRate >= 40 ? "success" : "warning"} trend="Active member rate" />

@@ -89,7 +89,10 @@ export type Database = {
         Relationships: []
       }
       members: {
+        // NOTE: country column requires a Supabase migration:
+        //   ALTER TABLE members ADD COLUMN country TEXT CHECK (country IN ('Kenya', 'Uganda'));
         Row: {
+          country: "Kenya" | "Uganda" | null
           created_at: string
           email: string | null
           id: string
@@ -107,6 +110,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          country?: "Kenya" | "Uganda" | null
           created_at?: string
           email?: string | null
           id?: string
@@ -124,6 +128,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          country?: "Kenya" | "Uganda" | null
           created_at?: string
           email?: string | null
           id?: string

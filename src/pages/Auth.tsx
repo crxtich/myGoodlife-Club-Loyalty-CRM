@@ -75,20 +75,20 @@ const AuthPage = () => {
         </div>
         <div className="relative z-10">
           <h1 className="font-display text-5xl font-bold leading-tight">
-            myGoodlife Club<br />
+            My Goodlife Club<br />
             <span className="text-primary-glow">Loyalty CRM</span>
           </h1>
           <p className="mt-6 text-lg text-primary-foreground/80 max-w-md">
-            Segment 500,000+ members. Build campaigns in minutes. Export ready-to-call lists — without ever opening Excel.
+            Segment 600,000+ members. Build campaigns in minutes. Export ready-to-call lists — without ever opening Excel.
           </p>
           <div className="mt-12 grid grid-cols-2 gap-6 max-w-md">
             <div>
-              <p className="text-3xl font-display font-bold">500K+</p>
+              <p className="text-3xl font-display font-bold">600K+</p>
               <p className="text-sm text-primary-foreground/70">Registered members</p>
             </div>
             <div>
               <p className="text-3xl font-display font-bold">150+</p>
-              <p className="text-sm text-primary-foreground/70">Stores in Kenya & Uganda</p>
+              <p className="text-sm text-primary-foreground/70">150+ stores across Kenya & Uganda</p>
             </div>
           </div>
         </div>

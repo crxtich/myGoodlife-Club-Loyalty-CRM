@@ -39,6 +39,11 @@ export const SEGMENT_ACTIONS: Record<MemberSegment, string> = {
   churned_180_plus: "Win-back or remove from active list",
 };
 
+export const COUNTRY_LABELS: Record<"Kenya" | "Uganda", string> = {
+  Kenya: "Kenya",
+  Uganda: "Uganda",
+};
+
 export const CHANNEL_LABELS: Record<ChannelType, string> = {
   in_store: "In-store",
   online: "Online",

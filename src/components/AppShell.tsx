@@ -39,7 +39,7 @@ const SidebarBody = ({ collapsed, onNavClick, onToggleCollapsed }: SidebarBodyPr
               <div className="bg-white rounded-lg p-3 inline-flex">
                 <img src={logo} alt="Goodlife Pharmacy" className="h-8 w-auto" />
               </div>
-              <p className="mt-3 text-xs uppercase tracking-widest text-sidebar-foreground/60">myGoodlife Club</p>
+              <p className="mt-3 text-xs uppercase tracking-widest text-sidebar-foreground/60">My Goodlife Club</p>
               <p className="text-sm font-display font-semibold text-sidebar-primary-foreground">Loyalty CRM</p>
             </div>
             {onToggleCollapsed && (

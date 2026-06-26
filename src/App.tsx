@@ -16,8 +16,19 @@ import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
 
-const Shell = ({ children }: { children: React.ReactNode }) => (
-  <ProtectedRoute><AppShell>{children}</AppShell></ProtectedRoute>
+// analyst: Dashboard + Members + Exports only
+// manager: above + Upload + Campaigns
+// admin: full access
+const Shell = ({
+  children,
+  requiredRoles,
+}: {
+  children: React.ReactNode;
+  requiredRoles?: ("admin" | "manager" | "analyst")[];
+}) => (
+  <ProtectedRoute requiredRoles={requiredRoles}>
+    <AppShell>{children}</AppShell>
+  </ProtectedRoute>
 );
 
 const App = () => (
@@ -31,8 +42,8 @@ const App = () => (
             <Route path="/auth" element={<Auth />} />
             <Route path="/" element={<Shell><Dashboard /></Shell>} />
             <Route path="/members" element={<Shell><Members /></Shell>} />
-            <Route path="/upload" element={<Shell><Upload /></Shell>} />
-            <Route path="/campaigns" element={<Shell><Campaigns /></Shell>} />
+            <Route path="/upload" element={<Shell requiredRoles={["admin", "manager"]}><Upload /></Shell>} />
+            <Route path="/campaigns" element={<Shell requiredRoles={["admin", "manager"]}><Campaigns /></Shell>} />
             <Route path="/exports" element={<Shell><Exports /></Shell>} />
             <Route path="*" element={<NotFound />} />
           </Routes>

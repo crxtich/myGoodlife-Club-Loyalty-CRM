@@ -35,6 +35,7 @@ const FIELD_ALIASES: Record<keyof Omit<Insert, "id" | "created_at" | "updated_at
   store_location: ["store", "store_location", "branch", "location"],
   preferred_channel: ["channel", "preferred_channel", "preferred channel"],
   last_purchase_date: ["last_purchase_date", "last_purchase", "last purchase", "last purchase date"],
+  country: ["country", "country_name", "nation"],
 };
 
 function findField(row: ParsedRow, names: string[]): any {
@@ -43,6 +44,14 @@ function findField(row: ParsedRow, names: string[]): any {
     const key = keys.find((k) => k.toLowerCase().trim().replace(/\s+/g, "_") === name.replace(/\s+/g, "_"));
     if (key && row[key] !== undefined && row[key] !== "") return row[key];
   }
+  return null;
+}
+
+function normalizeCountry(v: any): "Kenya" | "Uganda" | null {
+  if (!v) return null;
+  const s = String(v).toLowerCase().trim();
+  if (s.includes("kenya") || s === "ke") return "Kenya";
+  if (s.includes("uganda") || s === "ug") return "Uganda";
   return null;
 }
 
@@ -150,6 +159,7 @@ const Upload = () => {
           last_purchase_date: lastPurchase,
           total_purchases: totalPurchases,
           total_spend: totalSpend,
+          country: normalizeCountry(findField(row, FIELD_ALIASES.country)),
           segment,
           priority_score: priority,
         });
