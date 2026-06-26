@@ -25,7 +25,7 @@ const App = () => (
     <TooltipProvider delayDuration={300}>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
+      <BrowserRouter basename="/myGoodlife-Club-Loyalty-CRM">
         <AuthProvider>
           <Routes>
             <Route path="/auth" element={<Auth />} />
