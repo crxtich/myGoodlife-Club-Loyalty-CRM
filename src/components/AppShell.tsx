@@ -2,11 +2,19 @@ import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Users, Upload, Megaphone, FileDown, LogOut,
-  ChevronLeft, ChevronRight, Menu,
+  ChevronLeft, ChevronRight, Menu, Settings, User,
 } from "lucide-react";
 import logo from "@/assets/goodlife-logo.svg";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/contexts/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
@@ -19,6 +27,12 @@ const navItems = [
   { to: "/exports", icon: FileDown, label: "Exports" },
 ];
 
+const ROLE_COLORS: Record<string, string> = {
+  admin: "bg-destructive/20 text-destructive",
+  manager: "bg-primary/20 text-primary",
+  analyst: "bg-success/20 text-success",
+};
+
 interface SidebarBodyProps {
   collapsed: boolean;
   onNavClick?: () => void;
@@ -28,6 +42,8 @@ interface SidebarBodyProps {
 const SidebarBody = ({ collapsed, onNavClick, onToggleCollapsed }: SidebarBodyProps) => {
   const { user, signOut, role } = useAuth();
   const showLabels = !collapsed;
+  const initial = user?.email?.[0]?.toUpperCase() ?? "?";
+  const roleColor = role ? (ROLE_COLORS[role] ?? "bg-sidebar-primary/20 text-sidebar-primary-foreground") : "";
 
   return (
     <>
@@ -95,38 +111,70 @@ const SidebarBody = ({ collapsed, onNavClick, onToggleCollapsed }: SidebarBodyPr
         ))}
       </nav>
 
-      {/* User footer */}
-      <div className={cn("border-t border-sidebar-border space-y-3", collapsed ? "p-2" : "p-4")}>
-        {showLabels ? (
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-full bg-sidebar-primary flex items-center justify-center text-sidebar-primary-foreground font-semibold text-sm flex-shrink-0">
-              {user?.email?.[0]?.toUpperCase() ?? "?"}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-sidebar-primary-foreground truncate">{user?.email}</p>
-              <p className="text-xs text-sidebar-foreground/60 capitalize">{role ?? "member"}</p>
-            </div>
-          </div>
-        ) : (
-          <div className="flex justify-center">
-            <div className="h-9 w-9 rounded-full bg-sidebar-primary flex items-center justify-center text-sidebar-primary-foreground font-semibold text-sm" title={user?.email ?? ""}>
-              {user?.email?.[0]?.toUpperCase() ?? "?"}
-            </div>
-          </div>
-        )}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={signOut}
-          className={cn(
-            "w-full text-sidebar-foreground/80 hover:text-sidebar-primary-foreground hover:bg-sidebar-accent",
-            collapsed ? "justify-center px-0" : "justify-start"
-          )}
-          title={collapsed ? "Sign out" : undefined}
-        >
-          <LogOut className="h-4 w-4 flex-shrink-0" />
-          {showLabels && <span className="ml-2">Sign out</span>}
-        </Button>
+      {/* User footer — avatar chip opens dropdown */}
+      <div className={cn("border-t border-sidebar-border", collapsed ? "p-2" : "p-3")}>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className={cn(
+                "w-full flex items-center rounded-lg transition-colors hover:bg-sidebar-accent group",
+                collapsed ? "justify-center p-2" : "gap-3 px-3 py-2.5"
+              )}
+              title={collapsed ? user?.email ?? "" : undefined}
+            >
+              <div className="h-8 w-8 rounded-full bg-sidebar-primary flex items-center justify-center text-sidebar-primary-foreground font-semibold text-sm flex-shrink-0 ring-2 ring-sidebar-primary/30 group-hover:ring-sidebar-primary/60 transition-all">
+                {initial}
+              </div>
+              {showLabels && (
+                <div className="flex-1 min-w-0 text-left">
+                  <p className="text-sm font-medium text-sidebar-primary-foreground truncate leading-tight">
+                    {user?.email}
+                  </p>
+                  {role && (
+                    <span className={cn("inline-block text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded mt-0.5 capitalize", roleColor)}>
+                      {role}
+                    </span>
+                  )}
+                </div>
+              )}
+            </button>
+          </DropdownMenuTrigger>
+
+          <DropdownMenuContent
+            side="top"
+            align={collapsed ? "center" : "end"}
+            sideOffset={8}
+            className="w-56"
+          >
+            <DropdownMenuLabel className="font-normal">
+              <div className="flex items-center gap-2.5">
+                <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-semibold text-sm flex-shrink-0">
+                  {initial}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{user?.email}</p>
+                  {role && (
+                    <p className="text-xs text-muted-foreground capitalize">{role}</p>
+                  )}
+                </div>
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className="gap-2 cursor-pointer" disabled>
+              <User className="h-4 w-4" /> Profile
+            </DropdownMenuItem>
+            <DropdownMenuItem className="gap-2 cursor-pointer" disabled>
+              <Settings className="h-4 w-4" /> Settings
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="gap-2 cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10"
+              onClick={signOut}
+            >
+              <LogOut className="h-4 w-4" /> Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </>
   );
