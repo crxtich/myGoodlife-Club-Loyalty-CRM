@@ -195,11 +195,12 @@ export const AppShell = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <div className="min-h-screen flex bg-background">
-      {/* Desktop sidebar */}
+    // h-screen + overflow-hidden = viewport is the scroll root, not the page
+    <div className="h-screen flex overflow-hidden bg-background">
+      {/* Desktop sidebar — fixed height, never scrolls with content */}
       <aside
         className={cn(
-          "hidden md:flex flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border transition-all duration-300 flex-shrink-0",
+          "hidden md:flex flex-col h-full bg-sidebar text-sidebar-foreground border-r border-sidebar-border transition-all duration-300 flex-shrink-0",
           collapsed ? "w-16" : "w-64"
         )}
       >
@@ -213,7 +214,7 @@ export const AppShell = ({ children }: { children: React.ReactNode }) => {
         </SheetContent>
       </Sheet>
 
-      {/* Content area */}
+      {/* Content area — this is the only thing that scrolls */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Mobile top bar */}
         <header className="md:hidden h-14 flex items-center gap-3 px-4 border-b border-border bg-background flex-shrink-0">
@@ -228,7 +229,8 @@ export const AppShell = ({ children }: { children: React.ReactNode }) => {
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto">
+        {/* Only the main content scrolls — sidebar stays pinned */}
+        <main className="flex-1 overflow-y-auto">
           <div
             className={cn("max-w-7xl mx-auto animate-fade-in", isMobile ? "px-4 py-4" : "px-8 py-8")}
             key={location.pathname}

@@ -17,7 +17,7 @@ import { useAuth } from "@/contexts/AuthContext";
 
 type Member = Database["public"]["Tables"]["members"]["Row"];
 
-const PAGE_SIZE = 100;
+const PAGE_SIZES = [20, 50, 100, 200];
 
 const Members = () => {
   const { user } = useAuth();
@@ -27,9 +27,10 @@ const Members = () => {
   const [segmentFilter, setSegmentFilter] = useState<string>("all");
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(20);
   const [totalCount, setTotalCount] = useState(0);
 
-  const load = useCallback(async (pg: number, seg: string, q: string) => {
+  const load = useCallback(async (pg: number, seg: string, q: string, ps: number) => {
     setLoading(true);
     try {
       let query = supabase.from("members").select("*", { count: "exact" });
@@ -39,13 +40,12 @@ const Members = () => {
       }
 
       if (seg !== "all") {
-        // Segment is stored on the row — filter server-side
         query = query.eq("segment", seg);
       }
 
       const { data, count, error } = await query
         .order("priority_score", { ascending: false })
-        .range(pg * PAGE_SIZE, pg * PAGE_SIZE + PAGE_SIZE - 1);
+        .range(pg * ps, pg * ps + ps - 1);
 
       if (error) { toast.error(`Load error: ${error.message}`); return; }
       setMembers(data || []);
@@ -55,7 +55,7 @@ const Members = () => {
     }
   }, []);
 
-  useEffect(() => { load(page, segmentFilter, search); }, [page, segmentFilter, search, load]);
+  useEffect(() => { load(page, segmentFilter, search, pageSize); }, [page, segmentFilter, search, pageSize, load]);
 
   // Debounce search input
   useEffect(() => {
@@ -68,6 +68,11 @@ const Members = () => {
 
   const handleSegmentChange = (val: string) => {
     setSegmentFilter(val);
+    setPage(0);
+  };
+
+  const handlePageSizeChange = (val: string) => {
+    setPageSize(Number(val));
     setPage(0);
   };
 
@@ -109,9 +114,9 @@ const Members = () => {
   }
 
   const segments: MemberSegment[] = ["active", "new", "at_risk", "churned_60_90", "churned_90_180", "churned_180_plus"];
-  const start = page * PAGE_SIZE + 1;
-  const end = Math.min(page * PAGE_SIZE + members.length, totalCount);
-  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+  const start = page * pageSize + 1;
+  const end = Math.min(page * pageSize + members.length, totalCount);
+  const totalPages = Math.ceil(totalCount / pageSize);
 
   return (
     <div className="space-y-6">
@@ -200,18 +205,51 @@ const Members = () => {
         </Table>
       </Card>
 
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Page {page + 1} of {totalPages}
-          </p>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => setPage((p) => p - 1)} disabled={page === 0 || loading}>
-              <ChevronLeft className="h-4 w-4 mr-1" /> Previous
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setPage((p) => p + 1)} disabled={page >= totalPages - 1 || loading}>
-              Next <ChevronRight className="h-4 w-4 ml-1" />
-            </Button>
+      {/* Pagination footer — always visible when there are members */}
+      {totalCount > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          {/* Rows per page */}
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <span>Rows per page:</span>
+            <div className="flex gap-1">
+              {PAGE_SIZES.map((ps) => (
+                <button
+                  key={ps}
+                  onClick={() => handlePageSizeChange(String(ps))}
+                  className={`px-2.5 py-1 rounded text-sm font-medium border transition-colors ${
+                    pageSize === ps
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "border-border hover:bg-muted text-foreground"
+                  }`}
+                >
+                  {ps}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Page controls */}
+          <div className="flex items-center gap-3">
+            <p className="text-sm text-muted-foreground">
+              {totalCount === 0 ? "No results" : `${start}–${end} of ${totalCount.toLocaleString()}`}
+            </p>
+            <div className="flex gap-1">
+              <Button variant="outline" size="sm" onClick={() => setPage(0)} disabled={page === 0 || loading} title="First page">
+                <ChevronLeft className="h-3.5 w-3.5" /><ChevronLeft className="h-3.5 w-3.5 -ml-2" />
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setPage((p) => p - 1)} disabled={page === 0 || loading}>
+                <ChevronLeft className="h-4 w-4 mr-1" /> Previous
+              </Button>
+              <span className="flex items-center px-3 text-sm font-medium border border-border rounded-md bg-muted">
+                {page + 1} / {totalPages}
+              </span>
+              <Button variant="outline" size="sm" onClick={() => setPage((p) => p + 1)} disabled={page >= totalPages - 1 || loading}>
+                Next <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setPage(totalPages - 1)} disabled={page >= totalPages - 1 || loading} title="Last page">
+                <ChevronRight className="h-3.5 w-3.5" /><ChevronRight className="h-3.5 w-3.5 -ml-2" />
+              </Button>
+            </div>
           </div>
         </div>
       )}
