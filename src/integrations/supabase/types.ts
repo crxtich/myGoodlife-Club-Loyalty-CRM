@@ -137,6 +137,9 @@ export type Database = {
         // NOTE: country column requires a Supabase migration:
         //   ALTER TABLE members ADD COLUMN country TEXT CHECK (country IN ('Kenya', 'Uganda'));
         // NOTE: rfm_segment + score columns require the RFM migration (see supabase/migrations).
+        // NOTE: loyalty_id is reserved for a future stable identity key (not yet sourced);
+        //   sub_segment is reserved for future personas nested under each RFM segment.
+        //   phone remains the operative join key to membership_sales_transactions today.
         Row: {
           country: "Kenya" | "Uganda" | null
           created_at: string
@@ -144,6 +147,7 @@ export type Database = {
           id: string
           join_date: string | null
           last_purchase_date: string | null
+          loyalty_id: string | null
           member_id: string
           name: string
           phone: string | null
@@ -154,6 +158,7 @@ export type Database = {
           recency_score: number | null
           frequency_score: number | null
           monetary_score: number | null
+          sub_segment: string | null
           store_location: string | null
           total_purchases: number
           total_spend: number
@@ -166,6 +171,7 @@ export type Database = {
           id?: string
           join_date?: string | null
           last_purchase_date?: string | null
+          loyalty_id?: string | null
           member_id: string
           name: string
           phone?: string | null
@@ -176,6 +182,7 @@ export type Database = {
           recency_score?: number | null
           frequency_score?: number | null
           monetary_score?: number | null
+          sub_segment?: string | null
           store_location?: string | null
           total_purchases?: number
           total_spend?: number
@@ -188,6 +195,7 @@ export type Database = {
           id?: string
           join_date?: string | null
           last_purchase_date?: string | null
+          loyalty_id?: string | null
           member_id?: string
           name?: string
           phone?: string | null
@@ -198,10 +206,80 @@ export type Database = {
           recency_score?: number | null
           frequency_score?: number | null
           monetary_score?: number | null
+          sub_segment?: string | null
           store_location?: string | null
           total_purchases?: number
           total_spend?: number
           updated_at?: string
+        }
+        Relationships: []
+      }
+      membership_sales_transactions: {
+        // MVP demo data model — mirrors the real iVend/SAP "Membership Sales"
+        // source table (line-item grain). Field names map to source columns
+        // for straightforward reconciliation once the live connector exists.
+        Row: {
+          id: string
+          transaction_id: string
+          transaction_key: string | null
+          phone_no: string
+          customer_name: string | null
+          business_date: string
+          region: string | null
+          store_code: string | null
+          description: string | null
+          item: string | null
+          item_desc: string | null
+          category_group: string | null
+          sub_category_1: string | null
+          sub_category_3: string | null
+          brand: string | null
+          customer_grp: string | null
+          pre_tax: number
+          quantity: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          transaction_id: string
+          transaction_key?: string | null
+          phone_no: string
+          customer_name?: string | null
+          business_date: string
+          region?: string | null
+          store_code?: string | null
+          description?: string | null
+          item?: string | null
+          item_desc?: string | null
+          category_group?: string | null
+          sub_category_1?: string | null
+          sub_category_3?: string | null
+          brand?: string | null
+          customer_grp?: string | null
+          pre_tax?: number
+          quantity?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          transaction_id?: string
+          transaction_key?: string | null
+          phone_no?: string
+          customer_name?: string | null
+          business_date?: string
+          region?: string | null
+          store_code?: string | null
+          description?: string | null
+          item?: string | null
+          item_desc?: string | null
+          category_group?: string | null
+          sub_category_1?: string | null
+          sub_category_3?: string | null
+          brand?: string | null
+          customer_grp?: string | null
+          pre_tax?: number
+          quantity?: number
+          created_at?: string
         }
         Relationships: []
       }
@@ -338,6 +416,10 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      recompute_rfm_segments: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
       }
     }
     Enums: {

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Upload as UploadIcon, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { classifyMember, ChannelType } from "@/lib/segments";
-import { classifyRfm } from "@/lib/rfmSegments";
+import { recomputeRfmSegments } from "@/lib/rfmSegments";
 import { useAuth } from "@/contexts/AuthContext";
 import { Database } from "@/integrations/supabase/types";
 import {
@@ -27,7 +27,7 @@ interface UploadSummary {
   errors: { row: number; reason: string }[];
 }
 
-const FIELD_ALIASES: Record<keyof Omit<Insert, "id" | "created_at" | "updated_at" | "segment" | "priority_score" | "total_purchases" | "total_spend" | "rfm_segment" | "recency_score" | "frequency_score" | "monetary_score">, string[]> = {
+const FIELD_ALIASES: Record<keyof Omit<Insert, "id" | "created_at" | "updated_at" | "segment" | "priority_score" | "total_purchases" | "total_spend" | "rfm_segment" | "recency_score" | "frequency_score" | "monetary_score" | "loyalty_id" | "sub_segment">, string[]> = {
   member_id: ["member_id", "memberid", "id", "member id", "customer_id", "customer id"],
   name: ["name", "full_name", "customer_name", "full name", "customer name"],
   phone: ["phone", "phone_number", "mobile", "phone number", "msisdn"],
@@ -147,7 +147,6 @@ const Upload = () => {
         const totalSpend = Number(row.total_spend || row["total spend"] || row.spend || 0);
 
         const { segment, priority } = classifyMember(lastPurchase, joinDate, totalPurchases);
-        const rfm = classifyRfm(lastPurchase, joinDate, totalPurchases, totalSpend);
 
         records.push({
           member_id: memberId,
@@ -163,10 +162,6 @@ const Upload = () => {
           country: normalizeCountry(findField(row, FIELD_ALIASES.country)),
           segment,
           priority_score: priority,
-          rfm_segment: rfm.segment,
-          recency_score: rfm.recency,
-          frequency_score: rfm.frequency,
-          monetary_score: rfm.monetary,
         });
       });
 
@@ -197,6 +192,13 @@ const Upload = () => {
       setSummary({ processed: rows.length, newMembers: newCount, updatedMembers: updateCount, errors });
       toast.success(`Imported ${records.length} members (${newCount} new, ${updateCount} updated)`);
       loadBatches();
+
+      // RFM scoring runs server-side against real transaction data (see
+      // src/lib/rfmSegments.ts) — re-run it after every upload so newly
+      // imported/updated members get an up-to-date rfm_segment.
+      recomputeRfmSegments().then(({ error }) => {
+        if (error) toast.error(`RFM recompute failed: ${error}`);
+      });
     } catch (e: any) {
       toast.error(e.message || "Upload failed");
     } finally {

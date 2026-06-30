@@ -1,4 +1,5 @@
 import { Database } from "@/integrations/supabase/types";
+import { supabase } from "@/integrations/supabase/client";
 
 export type RfmSegment = Database["public"]["Enums"]["rfm_segment"];
 
@@ -56,71 +57,78 @@ export const RFM_SEGMENT_TACTICS: Record<RfmSegment, string[]> = {
 export const RFM_SEGMENTS: RfmSegment[] = ["champions", "loyals", "at_risk_rfm", "lapsed", "new_rfm"];
 
 /**
- * RFM scoring thresholds — Recency (days since last purchase), Frequency
- * (total_purchases), Monetary (total_spend). Each scored 1-5 via quintile-style
- * fixed thresholds against the existing members columns (no new source data
- * required). Segment assignment follows the reference framework:
- * Champions = high R + high F + high M; Loyals = high F + high M, lower R;
- * At Risk (RFM) = dropping R, previously high F; Lapsed = no purchase 90+ days;
- * New = enrolled within 30 days (overrides other signals for first-time members).
+ * RFM scoring — LOCKED SPECIFICATION. Do not change without explicit sign-off.
+ *
+ * The actual scoring runs server-side, in the `recompute_rfm_segments()`
+ * Supabase function (see supabase/migrations/20260630000500_rfm_percentile_
+ * scoring.sql) — it needs to aggregate the real membership_sales_transactions
+ * table (line-item grain, keyed by phone_no) across the whole member base for
+ * percentile ranking, which isn't something that can be done correctly
+ * client-side without pulling every transaction row into the browser (see the
+ * README's Known Limitations on client-side aggregation at scale).
+ *
+ * This file documents the same methodology for reference/testability and
+ * exposes `recomputeRfmSegments()` to trigger the server-side recompute:
+ *
+ *   Step 1 — overrides, checked in this order, before any scoring:
+ *     1. New: member's join_date within the last 30 days -> new_rfm. Stop.
+ *     2. Lapsed: not New, and most recent transaction (MAX(business_date) for
+ *        that phone_no) is 90+ days ago, or no transaction ever -> lapsed. Stop.
+ *   Step 2 — for every remaining member, aggregate from the real transactions
+ *     table over a trailing 6-month window, grouped by phone_no:
+ *       Frequency = COUNT(DISTINCT transaction_id) in the last 6 months
+ *       Monetary  = SUM(pre_tax) across all line items in the last 6 months
+ *         (pre_tax is already a line total — never multiply by quantity)
+ *       Recency   = days since the most recent transaction (not window-limited)
+ *   Step 3 — score each of Recency/Frequency/Monetary 1-5 via percentile rank
+ *     against the current eligible member base. Recency inverted (most
+ *     recent = 5). Frequency/Monetary not inverted (more = higher).
+ *   Step 4 — classify using the exact locked ranges below (all three match):
+ *
+ *       Segment          Recency   Frequency   Monetary
+ *       Champions        4-5       4-5         4-5
+ *       Loyals           2-4       4-5         4-5
+ *       At Risk (RFM)    1-2       3-5         3-5
+ *
+ *   Step 5 — RESIDUAL: any member who clears the New/Lapsed overrides but
+ *     doesn't match Champions/Loyals/At Risk (RFM) above defaults to LOYALS
+ *     as a placeholder. This is NOT part of the original framework — it is
+ *     provisional and needs explicit sign-off before being treated as final
+ *     logic. See README "MVP Notes".
+ *
+ * Naming: internal value `at_risk_rfm` / display "At Risk (RFM)", internal
+ * value `new_rfm` for New — both intentionally distinct from the lifecycle
+ * model's `at_risk` / `new` values (src/lib/segments.ts) to avoid any shared
+ * code path or display confusion between the two independent models.
  */
-function recencyScore(daysSincePurchase: number | null): number {
-  if (daysSincePurchase === null) return 1;
-  if (daysSincePurchase <= 14) return 5;
-  if (daysSincePurchase <= 30) return 4;
-  if (daysSincePurchase <= 60) return 3;
-  if (daysSincePurchase <= 90) return 2;
-  return 1;
+
+/**
+ * Pure mirror of the SQL function's Step 4 classification, given already-
+ * computed 1-5 scores. Exposed for unit testing / preview — the live segment
+ * value always comes from the database (recompute_rfm_segments), this is not
+ * called anywhere in the upload/display path.
+ */
+export function classifyRfmFromScores(recency: number, frequency: number, monetary: number): RfmSegment {
+  if (recency >= 4 && recency <= 5 && frequency >= 4 && frequency <= 5 && monetary >= 4 && monetary <= 5) {
+    return "champions";
+  }
+  if (recency >= 2 && recency <= 4 && frequency >= 4 && frequency <= 5 && monetary >= 4 && monetary <= 5) {
+    return "loyals";
+  }
+  if (recency >= 1 && recency <= 2 && frequency >= 3 && frequency <= 5 && monetary >= 3 && monetary <= 5) {
+    return "at_risk_rfm";
+  }
+  // Step 5 residual default — provisional, needs sign-off.
+  return "loyals";
 }
 
-function frequencyScore(totalPurchases: number): number {
-  if (totalPurchases >= 20) return 5;
-  if (totalPurchases >= 10) return 4;
-  if (totalPurchases >= 5) return 3;
-  if (totalPurchases >= 2) return 2;
-  return 1;
-}
-
-function monetaryScore(totalSpend: number): number {
-  if (totalSpend >= 100000) return 5;
-  if (totalSpend >= 50000) return 4;
-  if (totalSpend >= 20000) return 3;
-  if (totalSpend >= 5000) return 2;
-  return 1;
-}
-
-export function classifyRfm(
-  lastPurchaseDate: string | null,
-  joinDate: string | null,
-  totalPurchases: number,
-  totalSpend: number,
-  today = new Date()
-): { segment: RfmSegment; recency: number; frequency: number; monetary: number } {
-  const daysSincePurchase = lastPurchaseDate
-    ? Math.floor((today.getTime() - new Date(lastPurchaseDate).getTime()) / 86400000)
-    : null;
-  const joinDays = joinDate
-    ? Math.floor((today.getTime() - new Date(joinDate).getTime()) / 86400000)
-    : null;
-
-  const recency = recencyScore(daysSincePurchase);
-  const frequency = frequencyScore(totalPurchases);
-  const monetary = monetaryScore(totalSpend);
-
-  if (joinDays !== null && joinDays <= 30 && totalPurchases <= 1) {
-    return { segment: "new_rfm", recency, frequency, monetary };
-  }
-  if (daysSincePurchase === null || daysSincePurchase >= 90) {
-    return { segment: "lapsed", recency, frequency, monetary };
-  }
-  if (recency >= 4 && frequency >= 4 && monetary >= 4) {
-    return { segment: "champions", recency, frequency, monetary };
-  }
-  if (frequency >= 3 && monetary >= 3) {
-    return { segment: "loyals", recency, frequency, monetary };
-  }
-  if (recency <= 2 && frequency >= 3) {
-    return { segment: "at_risk_rfm", recency, frequency, monetary };
-  }
-  return { segment: "at_risk_rfm", recency, frequency, monetary };
+/**
+ * Triggers the server-side percentile recompute (recompute_rfm_segments) so
+ * members.rfm_segment / recency_score / frequency_score / monetary_score
+ * reflect the latest transaction data. Call after an Upload batch completes,
+ * or whenever transaction data changes.
+ */
+export async function recomputeRfmSegments(): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc("recompute_rfm_segments");
+  return { error: error?.message ?? null };
 }

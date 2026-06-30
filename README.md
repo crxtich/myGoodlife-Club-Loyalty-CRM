@@ -14,12 +14,14 @@ Internal CRM platform for the **My Goodlife Club** loyalty programme at Goodlife
 4. [Features](#features)
 5. [Member Segmentation Logic](#member-segmentation-logic)
 6. [RFM Segmentation vs Lifecycle Segmentation](#rfm-segmentation-vs-lifecycle-segmentation)
-7. [Role-Based Access Control](#role-based-access-control)
-8. [Database Schema](#database-schema)
-9. [Local Development](#local-development)
-10. [Deployment](#deployment)
-11. [Supabase Setup](#supabase-setup)
-12. [Known Limitations & Roadmap](#known-limitations--roadmap)
+7. [RFM Scoring Methodology](#rfm-scoring-methodology)
+8. [Role-Based Access Control](#role-based-access-control)
+9. [Database Schema](#database-schema)
+10. [Local Development](#local-development)
+11. [Deployment](#deployment)
+12. [Supabase Setup](#supabase-setup)
+13. [MVP Notes](#mvp-notes)
+14. [Known Limitations & Roadmap](#known-limitations--roadmap)
 
 ---
 
@@ -82,7 +84,7 @@ src/
 └── pages/
     ├── Auth.tsx          # Sign in / sign up page
     ├── Campaigns.tsx     # Campaign builder (RFM targeting) + campaign list
-    ├── Dashboard.tsx     # KPI overview + lifecycle segment charts
+    ├── Dashboard.tsx     # KPI overview + RFM segment charts (primary), lifecycle charts (legacy tab)
     ├── Exports.tsx       # CSV export history log
     ├── Reports.tsx       # Curated PDF/Excel report generator
     ├── RfmSegments.tsx   # RFM segment framework + live member counts
@@ -103,10 +105,11 @@ supabase/
 ## Features
 
 ### Dashboard
-- Live KPI cards: Total Members, Active (30d), At Risk, Churned, Lifetime Value (KES), Campaigns Run, CSV Exports, Health Score
-- Bar chart — member distribution across all 6 segments
-- Pie chart — segment share of total member base
-- All segment counts are computed in real-time from member purchase dates
+- **RFM segmentation is the primary, default view.** Live KPI cards: Total Members, Champions + Loyals, At Risk (lifecycle), Churned (lifecycle), Lifetime Value (KES), Campaigns Run, CSV Exports, Health Score
+- **Health Score** is defined as the % of members in the Champions or Loyals RFM segments — i.e. high-value, currently engaged members. (Previously this was the lifecycle "purchased in the last 30 days" rate; redefined against the RFM model since RFM is now the primary segmentation lens. See [RFM Scoring Methodology](#rfm-scoring-methodology).)
+- Bar chart + pie chart — member distribution across the 5 RFM segments (Champions, Loyals, At Risk (RFM), Lapsed, New), read live from `members.rfm_segment`
+- A **"Lifecycle (legacy)" tab** preserves the original lifecycle bar/pie charts (Active/Never Activated/At Risk/Churned Early/Churned Deep/Lapsed 1 Year+) as a secondary view — the lifecycle model is not deleted, since future sub-segments may nest under the RFM segments per the team's direction
+- All RFM segment counts reflect whatever `recompute_rfm_segments()` last computed server-side; lifecycle segment counts are still computed client-side from `last_purchase_date`/`join_date` at render time
 
 ### RFM Segments
 - Behavioural segmentation page (Recency / Frequency / Monetary) — Champions, Loyals, At Risk (RFM), Lapsed, New
@@ -124,8 +127,9 @@ supabase/
 ### Data Upload
 - Drag-and-drop or file picker — accepts `.xlsx`, `.xls`, `.csv`
 - Flexible column name matching (case-insensitive, spaces/underscores normalised)
-- Upserts members by `member_id` — re-uploading updates existing records
-- Auto-segments and scores every member on import
+- Upserts members by `member_id` — re-uploading updates existing records. `member_id` remains the system's internal upsert/identity key (kept as-is, since it's relied on throughout Upload and elsewhere); `phone` is the operative join key from `members` to `membership_sales_transactions` today; `loyalty_id` is reserved for a future stable identity key once that source system is connected (see [MVP Notes](#mvp-notes))
+- Auto-computes the lifecycle `segment`/`priority_score` per member on import (client-side, from `last_purchase_date`/`join_date`)
+- Triggers a server-side RFM recompute (`recompute_rfm_segments()`) after every upload batch completes, so `rfm_segment` reflects the latest transaction data — see [RFM Scoring Methodology](#rfm-scoring-methodology)
 - Upload history log with per-batch record counts and error counts
 - Danger Zone: clear all member data (admin only in production intent)
 
@@ -202,8 +206,8 @@ The CRM runs **two independent, parallel segmentation models**. Neither replaces
 |---|---|---|
 | **Question answered** | "How urgently does this member need re-engagement?" | "How valuable and engaged is this member, behaviourally?" |
 | **Drives** | Dashboard KPIs/charts, Members table segment column + filter, priority score | Campaign builder targeting, RFM Segments page |
-| **Computed from** | `last_purchase_date`, `join_date` | Recency (`last_purchase_date`), Frequency (`total_purchases`), Monetary (`total_spend`) |
-| **Logic location** | `src/lib/segments.ts` | `src/lib/rfmSegments.ts` |
+| **Computed from** | `last_purchase_date`, `join_date` (client-side, on render) | Real transaction data in `membership_sales_transactions`, percentile-scored server-side — see [RFM Scoring Methodology](#rfm-scoring-methodology) |
+| **Logic location** | `src/lib/segments.ts` | `src/lib/rfmSegments.ts` (docs/types/RPC trigger) + `recompute_rfm_segments()` Postgres function (actual scoring) |
 | **Values** | `active`, `new`, `at_risk`, `churned_60_90`, `churned_90_180`, `churned_180_plus` | `champions`, `loyals`, `at_risk_rfm`, `lapsed`, `new_rfm` |
 
 > **Note:** RFM's "At Risk" segment is labelled **"At Risk (RFM)"** everywhere in the UI and stored as the distinct value `at_risk_rfm`, specifically to avoid confusion with the lifecycle segmentation's own `at_risk` value. They are not the same thing and a member can be in different "risk" states under each model simultaneously.
@@ -218,7 +222,36 @@ The CRM runs **two independent, parallel segmentation models**. Neither replaces
 | **Lapsed** | Very low recency, regardless of past frequency/monetary | Inactive for an extended period | Strong reactivation incentive or win-back campaign |
 | **New** | Just joined, minimal purchase history yet | Too early to score on frequency/monetary | Onboarding and first-purchase activation |
 
-Members.tsx, its segment filter, and the Dashboard charts are unaffected by RFM segmentation — they continue to use the lifecycle model exclusively.
+Members.tsx and its segment filter continue to use the lifecycle model exclusively. The Dashboard now leads with RFM (see [Features → Dashboard](#features)), with the lifecycle charts preserved as a secondary "Lifecycle (legacy)" tab rather than removed.
+
+---
+
+## RFM Scoring Methodology
+
+**Locked specification** — this is the single source of truth for how `rfm_segment`/`recency_score`/`frequency_score`/`monetary_score` are computed. The methodology is documented in full in `src/lib/rfmSegments.ts` and implemented server-side in the `recompute_rfm_segments()` PostgreSQL function (`supabase/migrations/20260630000500_rfm_percentile_scoring.sql`). It runs against the real `membership_sales_transactions` table (line-item grain, mirroring the future iVend/SAP "Membership Sales" source — see [MVP Notes](#mvp-notes)), not the cumulative `total_purchases`/`total_spend` fields on `members`.
+
+**Step 1 — overrides, checked in this exact order, before any scoring runs:**
+1. **New:** `join_date` within the last 30 days → `new_rfm`. Stop.
+2. **Lapsed:** not New, and the most recent transaction (`MAX(business_date)` for that member's `phone`) is 90+ days ago, or there is no transaction ever → `lapsed`. Stop.
+
+**Step 2 — for every remaining member**, aggregate from `membership_sales_transactions` over a **trailing 6-month window**, grouped by `phone_no`:
+- **Frequency** = `COUNT(DISTINCT transaction_id)` in the last 6 months (not row count — one transaction spans multiple line-item rows)
+- **Monetary** = `SUM(pre_tax)` across all line items in the last 6 months (`pre_tax` is already a line total — never multiplied by `quantity`)
+- **Recency** = days since the most recent `business_date` for that `phone_no` (not window-limited)
+
+**Step 3** — score Recency, Frequency, Monetary each 1–5 via percentile rank (`NTILE(5)`) against the current eligible member base. Recency is inverted (most recent = 5); Frequency/Monetary are not (more = higher).
+
+**Step 4 — classify** using these exact locked ranges (all three conditions must match):
+
+| Segment | Recency score | Frequency score | Monetary score |
+|---|---|---|---|
+| Champions | 4–5 | 4–5 | 4–5 |
+| Loyals | 2–4 | 4–5 | 4–5 |
+| At Risk (RFM) | 1–2 | 3–5 | 3–5 |
+
+**Step 5 — residual:** any member who clears the New/Lapsed overrides but doesn't match one of the three bands above currently defaults to **Loyals** as a placeholder. **This is flagged in code comments and here explicitly: it is NOT part of the original RFM framework and is provisional, pending the team's explicit sign-off before being treated as final logic.**
+
+**Why server-side:** percentile ranking needs to compare each member against the whole eligible base, which isn't something that can be done correctly client-side without pulling every transaction row into the browser (see [Known Limitations](#known-limitations--roadmap)). `recompute_rfm_segments()` is called via `supabase.rpc("recompute_rfm_segments")` (exposed as `recomputeRfmSegments()` in `src/lib/rfmSegments.ts`) after every Data Upload batch completes.
 
 ---
 
@@ -249,14 +282,14 @@ ON CONFLICT DO NOTHING;
 ## Database Schema
 
 ### `members`
-Core member records. Upserted by `member_id`.
+Core member records. Upserted by `member_id` (the operative internal identity key — see [MVP Notes](#mvp-notes)). `phone` is the join key into `membership_sales_transactions` today.
 
 | Column | Type | Notes |
 |--------|------|-------|
 | `id` | uuid | Primary key |
-| `member_id` | text | Unique business ID |
+| `member_id` | text | Unique business ID — operative upsert key |
 | `name` | text | |
-| `phone` | text | |
+| `phone` | text | Operative join key to `membership_sales_transactions.phone_no` today |
 | `email` | text | |
 | `join_date` | date | |
 | `last_purchase_date` | date | |
@@ -266,10 +299,12 @@ Core member records. Upserted by `member_id`.
 | `total_spend` | numeric | KES |
 | `segment` | member_segment | Lifecycle segment — set at upload time |
 | `priority_score` | int | 0–100, higher = more urgent |
-| `rfm_segment` | rfm_segment | RFM segment — set at upload time, drives Campaign targeting |
-| `recency_score` | int | 1–5, RFM recency component |
-| `frequency_score` | int | 1–5, RFM frequency component |
-| `monetary_score` | int | 1–5, RFM monetary component |
+| `rfm_segment` | rfm_segment | RFM segment — set by `recompute_rfm_segments()`, drives Campaign targeting & Dashboard |
+| `recency_score` | int | 1–5, RFM recency component (NULL for New/Lapsed overrides) |
+| `frequency_score` | int | 1–5, RFM frequency component (NULL for New/Lapsed overrides) |
+| `monetary_score` | int | 1–5, RFM monetary component (NULL for New/Lapsed overrides) |
+| `loyalty_id` | text | **Reserved/placeholder.** Future stable loyalty-system identity key — see [MVP Notes](#mvp-notes). Not yet sourced, not a join key. |
+| `sub_segment` | text | **Reserved/placeholder.** Future personas nested under each RFM segment — see [MVP Notes](#mvp-notes). No UI yet. |
 | `country` | text | `Kenya \| Uganda` — requires migration* |
 | `created_at` | timestamptz | |
 | `updated_at` | timestamptz | |
@@ -278,6 +313,33 @@ Core member records. Upserted by `member_id`.
 > ```sql
 > ALTER TABLE members ADD COLUMN IF NOT EXISTS country TEXT CHECK (country IN ('Kenya', 'Uganda'));
 > ```
+
+### `membership_sales_transactions`
+Line-item grain transaction history, mirroring the real iVend/SAP "Membership Sales" source table field-for-field (see [MVP Notes](#mvp-notes)) so this maps cleanly onto the live connector once built. One `transaction_id` spans multiple rows (one per item purchased in that visit). This is what RFM scoring aggregates from.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | uuid | Primary key |
+| `transaction_id` | text | Groups line items into one transaction — use `COUNT(DISTINCT transaction_id)` for Frequency, not row count |
+| `transaction_key` | text | |
+| `phone_no` | text | Join key back to `members.phone` — not a guaranteed-stable identity (see `loyalty_id`) |
+| `customer_name` | text | |
+| `business_date` | date | Drives Recency and the 6-month aggregation window |
+| `region` | text | |
+| `store_code` | text | |
+| `description` | text | |
+| `item` | text | |
+| `item_desc` | text | |
+| `category_group` | text | |
+| `sub_category_1` | text | |
+| `sub_category_3` | text | |
+| `brand` | text | |
+| `customer_grp` | text | |
+| `pre_tax` | numeric | **Already the total line value** — do not multiply by `quantity` when summing for Monetary |
+| `quantity` | numeric | |
+| `created_at` | timestamptz | |
+
+> Seed/demo transaction data for every existing member is generated by `supabase/migrations/20260630000400_seed_demo_transactions.sql` — explicitly labelled as demo data, not real customer transactions, and safe to re-run (idempotent per `phone_no`).
 
 ### `campaigns`
 | Column | Type | Notes |
@@ -343,6 +405,12 @@ rfm_segment:    champions | loyals | at_risk_rfm | lapsed | new_rfm
 channel_type:   sms | email
 app_role:       admin | manager | analyst
 ```
+
+### Functions
+| Function | Notes |
+|----------|-------|
+| `has_role(_user_id, _role)` | RLS helper — checks `user_roles` |
+| `recompute_rfm_segments()` | `SECURITY DEFINER` — runs the full RFM pipeline (overrides → 6-month aggregation → percentile scoring → classification) and updates every member's `rfm_segment`/`*_score` columns. See [RFM Scoring Methodology](#rfm-scoring-methodology). Called via `supabase.rpc("recompute_rfm_segments")` after every Data Upload batch. |
 
 ---
 
@@ -413,12 +481,31 @@ The app deploys automatically to **GitHub Pages** on every push to `main`.
    ```sql
    ALTER TABLE members ADD COLUMN IF NOT EXISTS country TEXT CHECK (country IN ('Kenya', 'Uganda'));
    ```
-4. Run the three latest migrations, in order, if not already applied:
+4. Run these migrations, in order, if not already applied:
    - `20260630000000_channel_type_sms_email.sql` — removes in-store/WhatsApp, narrows `channel_type` to `sms | email`
    - `20260630000100_rfm_segmentation.sql` — adds the `rfm_segment` enum/column, RFM score columns, and Campaign `target_rfm_segments`/SMS/Email content columns
    - `20260630000200_report_exports.sql` — adds the `report_exports` table for the Reports page
+   - `20260630000300_membership_sales_transactions.sql` — adds the `membership_sales_transactions` table and the reserved `members.loyalty_id`/`members.sub_segment` columns
+   - `20260630000400_seed_demo_transactions.sql` — generates demo transaction history for existing members (run **after** members are uploaded; safe to re-run)
+   - `20260630000500_rfm_percentile_scoring.sql` — creates `recompute_rfm_segments()`, the server-side percentile RFM scoring engine
 5. Enable Row Level Security on all tables (already in migrations)
 6. Copy your **Project URL** and **anon (publishable) key** from Project Settings → API
+7. After uploading members (or applying the seed migration), call `recompute_rfm_segments()` once via the SQL Editor or by performing a Data Upload (which triggers it automatically) so `rfm_segment` is populated before viewing the Dashboard
+
+---
+
+## MVP Notes
+
+This CRM is an MVP built for stakeholder review ahead of the real iVend/SAP integration (iVend/SAP Azure SQL views → Node.js/Express backend on Azure → this React frontend), which is a future phase and has not been started. The following fields/tables are intentional placeholders, flagged here so they aren't mistaken for finished functionality:
+
+| Item | Status | Why |
+|------|--------|-----|
+| `members.loyalty_id` | Reserved, nullable, unused | The real stable customer identity key lives in a separate loyalty system whose table/field names haven't been shared yet (expected in a future session). `phone` remains the operative join key today, even though phone numbers aren't a guaranteed-stable identity (can be reissued/change hands). |
+| `members.sub_segment` | Reserved, nullable, unused, no UI | Future personas nested under each of the 5 RFM segments (e.g. "Health Custodian" under Champions). No sub-segment list has been defined yet — do not build sub-segmentation UI until one is. |
+| `membership_sales_transactions` | Seed/demo data only | Shaped to mirror the real iVend/SAP "Membership Sales" source table (line-item grain, source-matching field names) for a clean future mapping, but today it is populated entirely by `20260630000400_seed_demo_transactions.sql`, not a live feed. |
+| RFM residual-to-Loyals default (Step 5) | Provisional, **not signed off** | Any member who clears the New/Lapsed overrides but doesn't match the Champions/Loyals/At Risk (RFM) bands defaults to Loyals. This is not part of the original RFM framework — flagged in `recompute_rfm_segments()` and `src/lib/rfmSegments.ts` and needs explicit team sign-off before being treated as final logic. |
+| `purchases` table | Unused legacy scaffolding | Predates `membership_sales_transactions`; no application code queries it. Left in place untouched rather than dropped, in case of historical data. |
+| SMS / Email provider integration | UI only, "integration pending" | No live SMS or email provider is connected — Campaigns shows honest placeholders rather than a fabricated working integration. |
 
 ---
 
@@ -428,8 +515,9 @@ The app deploys automatically to **GitHub Pages** on every push to `main`.
 
 | Issue | Impact |
 |-------|--------|
-| Dashboard fetches all member rows client-side | Slow/broken above ~50,000 members |
-| Segment column set at upload, not updated live | Stale segments between uploads |
+| Dashboard fetches all member rows client-side for lifecycle counts/LTV | Slow/broken above ~50,000 members |
+| RFM percentile scoring runs server-side but is a full-table recompute, not incremental | Recompute cost grows with member/transaction count |
+| Lifecycle `segment` column set at upload, not updated live | Stale lifecycle segments between uploads |
 | No database indexes on segment, priority_score, last_purchase_date | Full table scans at scale |
 | Campaign exports load all matching members at once | Memory risk above 100K results |
 | Supabase free tier: 500 MB storage, pauses on inactivity | Not suitable for production at scale |
