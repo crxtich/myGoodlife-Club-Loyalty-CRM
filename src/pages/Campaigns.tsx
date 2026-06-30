@@ -10,28 +10,30 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { SegmentBadge } from "@/components/SegmentBadge";
-import { MemberSegment, ChannelType, SEGMENT_LABELS, CHANNEL_LABELS, formatKES, classifyMember } from "@/lib/segments";
+import { RfmSegmentBadge } from "@/components/RfmSegmentBadge";
+import { ChannelType, formatKES, classifyMember } from "@/lib/segments";
+import { RfmSegment, RFM_SEGMENTS, RFM_SEGMENT_LABELS } from "@/lib/rfmSegments";
 import { Database } from "@/integrations/supabase/types";
-import { Megaphone, FileDown, Loader2, Plus } from "lucide-react";
+import { Megaphone, FileDown, Loader2, Plus, MessageSquare, Mail } from "lucide-react";
 import Papa from "papaparse";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 
 type Campaign = Database["public"]["Tables"]["campaigns"]["Row"];
 
-const ALL_SEGMENTS: MemberSegment[] = ["active", "new", "at_risk", "churned_60_90", "churned_90_180", "churned_180_plus"];
-const ALL_CHANNELS: { value: ChannelType; label: string }[] = [
-  { value: "in_store", label: "In-store" },
-  { value: "online", label: "Online" },
-  { value: "whatsapp", label: "WhatsApp" },
+const ALL_CHANNELS: { value: ChannelType; label: string; icon: typeof MessageSquare }[] = [
+  { value: "sms", label: "SMS", icon: MessageSquare },
+  { value: "email", label: "Email", icon: Mail },
 ];
 
 const EMPTY_FORM = {
   name: "",
   objective: "",
-  target_segments: [] as MemberSegment[],
+  target_rfm_segments: [] as RfmSegment[],
   channel: "" as ChannelType | "",
+  message_template: "",
+  email_subject: "",
+  email_body: "",
   notes: "",
 };
 
@@ -42,6 +44,7 @@ const Campaigns = () => {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
   const [exportingId, setExportingId] = useState<string | null>(null);
+  const [emailCoverage, setEmailCoverage] = useState<{ withEmail: number; total: number } | null>(null);
 
   const loadCampaigns = useCallback(async () => {
     setLoadingCampaigns(true);
@@ -56,28 +59,53 @@ const Campaigns = () => {
 
   useEffect(() => { loadCampaigns(); }, [loadCampaigns]);
 
-  function toggleSegment(seg: MemberSegment) {
+  function toggleSegment(seg: RfmSegment) {
     setForm((f) => ({
       ...f,
-      target_segments: f.target_segments.includes(seg)
-        ? f.target_segments.filter((s) => s !== seg)
-        : [...f.target_segments, seg],
+      target_rfm_segments: f.target_rfm_segments.includes(seg)
+        ? f.target_rfm_segments.filter((s) => s !== seg)
+        : [...f.target_rfm_segments, seg],
     }));
   }
+
+  // When Email is selected with target segments chosen, show how many of those
+  // members actually have an email on file (Upload.tsx captures it, Members.tsx shows it).
+  useEffect(() => {
+    if (form.channel !== "email" || form.target_rfm_segments.length === 0) {
+      setEmailCoverage(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data, count } = await supabase
+        .from("members")
+        .select("email", { count: "exact" })
+        .in("rfm_segment", form.target_rfm_segments);
+      if (cancelled) return;
+      const withEmail = (data || []).filter((m) => m.email).length;
+      setEmailCoverage({ withEmail, total: count ?? (data || []).length });
+    })();
+    return () => { cancelled = true; };
+  }, [form.channel, form.target_rfm_segments]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim()) { toast.error("Campaign name is required"); return; }
-    if (form.target_segments.length === 0) { toast.error("Select at least one target segment"); return; }
+    if (form.target_rfm_segments.length === 0) { toast.error("Select at least one target segment"); return; }
     if (!form.channel) { toast.error("Select a channel"); return; }
+    if (form.channel === "sms" && !form.message_template.trim()) { toast.error("Add a message template for SMS"); return; }
+    if (form.channel === "email" && (!form.email_subject.trim() || !form.email_body.trim())) { toast.error("Add a subject and body for Email"); return; }
 
     setSaving(true);
     try {
       const { error } = await supabase.from("campaigns").insert({
         name: form.name.trim(),
         objective: form.objective.trim() || null,
-        target_segments: form.target_segments,
+        target_rfm_segments: form.target_rfm_segments,
         channel: form.channel as ChannelType,
+        message_template: form.channel === "sms" ? form.message_template.trim() : null,
+        email_subject: form.channel === "email" ? form.email_subject.trim() : null,
+        email_body: form.channel === "email" ? form.email_body.trim() : null,
         notes: form.notes.trim() || null,
         created_by: user?.id ?? null,
       });
@@ -96,7 +124,7 @@ const Campaigns = () => {
       const { data: members, error } = await supabase
         .from("members")
         .select("*")
-        .in("segment", campaign.target_segments);
+        .in("rfm_segment", campaign.target_rfm_segments);
 
       if (error) { toast.error(`Export failed: ${error.message}`); return; }
       if (!members?.length) { toast.error("No members found for this campaign's segments"); return; }
@@ -107,8 +135,8 @@ const Campaigns = () => {
         name: m.name,
         phone: m.phone || "",
         email: m.email || "",
-        segment: SEGMENT_LABELS[classifyMember(m.last_purchase_date, m.join_date, m.total_purchases ?? 0, today).segment],
-        preferred_channel: m.preferred_channel ? CHANNEL_LABELS[m.preferred_channel] : "",
+        lifecycle_segment: classifyMember(m.last_purchase_date, m.join_date, m.total_purchases ?? 0, today).segment,
+        rfm_segment: m.rfm_segment ? RFM_SEGMENT_LABELS[m.rfm_segment] : "",
         last_purchase_date: m.last_purchase_date || "",
         total_purchases: m.total_purchases,
         total_spend: m.total_spend,
@@ -152,7 +180,7 @@ const Campaigns = () => {
       <div>
         <p className="text-sm text-muted-foreground font-medium uppercase tracking-wider">Campaigns</p>
         <h1 className="font-display text-3xl font-bold mt-1">Campaign builder</h1>
-        <p className="text-muted-foreground mt-1">Design segment-targeted campaigns and export contact lists.</p>
+        <p className="text-muted-foreground mt-1">Design RFM segment-targeted campaigns and export contact lists.</p>
       </div>
 
       {/* Section A — Create Campaign */}
@@ -180,7 +208,7 @@ const Campaigns = () => {
               <Label htmlFor="camp-objective">Objective</Label>
               <Input
                 id="camp-objective"
-                placeholder="e.g. Reactivate churned members with 10% voucher"
+                placeholder="e.g. Reactivate at-risk RFM members with 10% voucher"
                 value={form.objective}
                 onChange={(e) => setForm((f) => ({ ...f, objective: e.target.value }))}
                 className="mt-1"
@@ -190,43 +218,95 @@ const Campaigns = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div>
-              <Label className="mb-2 block">Target segments <span className="text-destructive">*</span></Label>
+              <Label className="mb-2 block">Target segments (RFM) <span className="text-destructive">*</span></Label>
               <div className="space-y-2 border border-border rounded-lg p-3 bg-background">
-                {ALL_SEGMENTS.map((seg) => (
+                {RFM_SEGMENTS.map((seg) => (
                   <label key={seg} className="flex items-center gap-2.5 cursor-pointer group">
                     <Checkbox
-                      checked={form.target_segments.includes(seg)}
+                      checked={form.target_rfm_segments.includes(seg)}
                       onCheckedChange={() => toggleSegment(seg)}
                     />
-                    <SegmentBadge segment={seg} />
+                    <RfmSegmentBadge segment={seg} />
                   </label>
                 ))}
               </div>
             </div>
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="camp-channel">Channel <span className="text-destructive">*</span></Label>
-                <Select value={form.channel} onValueChange={(v) => setForm((f) => ({ ...f, channel: v as ChannelType }))}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select channel" /></SelectTrigger>
-                  <SelectContent>
-                    {ALL_CHANNELS.map((c) => (
-                      <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="camp-notes">Notes (optional)</Label>
-                <Textarea
-                  id="camp-notes"
-                  placeholder="Any additional context for this campaign…"
-                  value={form.notes}
-                  onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-                  className="mt-1 resize-none"
-                  rows={4}
-                />
-              </div>
+            <div>
+              <Label htmlFor="camp-channel">Channel <span className="text-destructive">*</span></Label>
+              <Select value={form.channel} onValueChange={(v) => setForm((f) => ({ ...f, channel: v as ChannelType }))}>
+                <SelectTrigger className="mt-1"><SelectValue placeholder="Select channel" /></SelectTrigger>
+                <SelectContent>
+                  {ALL_CHANNELS.map((c) => (
+                    <SelectItem key={c.value} value={c.value}>
+                      <span className="flex items-center gap-2"><c.icon className="h-3.5 w-3.5" />{c.label}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {form.channel === "sms" && (
+                <div className="mt-4 space-y-2">
+                  <Label htmlFor="camp-sms-template">Message template <span className="text-destructive">*</span></Label>
+                  <Textarea
+                    id="camp-sms-template"
+                    placeholder="e.g. Hi {name}, your My Goodlife Club rewards are waiting! Visit any store this week…"
+                    value={form.message_template}
+                    onChange={(e) => setForm((f) => ({ ...f, message_template: e.target.value }))}
+                    className="resize-none"
+                    rows={3}
+                  />
+                  <p className="text-xs text-muted-foreground bg-muted rounded-md px-2.5 py-1.5">
+                    Messages are routed by each member's country at send time. SMS provider integration pending — this builds the message and target list only.
+                  </p>
+                </div>
+              )}
+
+              {form.channel === "email" && (
+                <div className="mt-4 space-y-3">
+                  <div>
+                    <Label htmlFor="camp-email-subject">Subject line <span className="text-destructive">*</span></Label>
+                    <Input
+                      id="camp-email-subject"
+                      placeholder="e.g. We miss you at My Goodlife Club"
+                      value={form.email_subject}
+                      onChange={(e) => setForm((f) => ({ ...f, email_subject: e.target.value }))}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="camp-email-body">Body <span className="text-destructive">*</span></Label>
+                    <Textarea
+                      id="camp-email-body"
+                      placeholder="Email content…"
+                      value={form.email_body}
+                      onChange={(e) => setForm((f) => ({ ...f, email_body: e.target.value }))}
+                      className="resize-none mt-1"
+                      rows={4}
+                    />
+                  </div>
+                  {emailCoverage && (
+                    <p className="text-xs text-muted-foreground bg-muted rounded-md px-2.5 py-1.5">
+                      {emailCoverage.withEmail} of {emailCoverage.total} targeted members have an email on file.
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground bg-muted rounded-md px-2.5 py-1.5">
+                    Email provider integration pending — this builds the message and target list only.
+                  </p>
+                </div>
+              )}
             </div>
+          </div>
+
+          <div>
+            <Label htmlFor="camp-notes">Notes (optional)</Label>
+            <Textarea
+              id="camp-notes"
+              placeholder="Any additional context for this campaign…"
+              value={form.notes}
+              onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+              className="mt-1 resize-none"
+              rows={3}
+            />
           </div>
 
           <div className="flex justify-end pt-2">
@@ -271,12 +351,16 @@ const Campaigns = () => {
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
-                      {c.target_segments.map((s) => (
-                        <SegmentBadge key={s} segment={s} />
+                      {c.target_rfm_segments.map((s) => (
+                        <RfmSegmentBadge key={s} segment={s} />
                       ))}
                     </div>
                   </TableCell>
-                  <TableCell className="text-sm">{c.channel ? CHANNEL_LABELS[c.channel] : "—"}</TableCell>
+                  <TableCell className="text-sm">
+                    {c.channel === "sms" && <span className="inline-flex items-center gap-1.5"><MessageSquare className="h-3.5 w-3.5 text-primary" /> SMS</span>}
+                    {c.channel === "email" && <span className="inline-flex items-center gap-1.5"><Mail className="h-3.5 w-3.5 text-primary" /> Email</span>}
+                    {!c.channel && "—"}
+                  </TableCell>
                   <TableCell className="text-right tabular-nums">{c.export_count}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {new Date(c.created_at).toLocaleDateString("en-KE", { dateStyle: "medium" })}

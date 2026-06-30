@@ -13,12 +13,13 @@ Internal CRM platform for the **My Goodlife Club** loyalty programme at Goodlife
 3. [Project Structure](#project-structure)
 4. [Features](#features)
 5. [Member Segmentation Logic](#member-segmentation-logic)
-6. [Role-Based Access Control](#role-based-access-control)
-7. [Database Schema](#database-schema)
-8. [Local Development](#local-development)
-9. [Deployment](#deployment)
-10. [Supabase Setup](#supabase-setup)
-11. [Known Limitations & Roadmap](#known-limitations--roadmap)
+6. [RFM Segmentation vs Lifecycle Segmentation](#rfm-segmentation-vs-lifecycle-segmentation)
+7. [Role-Based Access Control](#role-based-access-control)
+8. [Database Schema](#database-schema)
+9. [Local Development](#local-development)
+10. [Deployment](#deployment)
+11. [Supabase Setup](#supabase-setup)
+12. [Known Limitations & Roadmap](#known-limitations--roadmap)
 
 ---
 
@@ -63,7 +64,8 @@ src/
 │   ├── KpiCard.tsx       # Dashboard metric cards
 │   ├── NavLink.tsx       # Sidebar navigation link
 │   ├── ProtectedRoute.tsx # Auth + role-based route guard
-│   └── SegmentBadge.tsx  # Colour-coded segment label with tooltip
+│   ├── SegmentBadge.tsx  # Colour-coded lifecycle segment label with tooltip
+│   └── RfmSegmentBadge.tsx # Colour-coded RFM segment label with tooltip
 ├── contexts/
 │   └── AuthContext.tsx   # Auth state + role fetched from user_roles table
 ├── hooks/
@@ -74,13 +76,16 @@ src/
 │       ├── client.ts     # Supabase client initialisation
 │       └── types.ts      # Auto-generated + extended TypeScript types
 ├── lib/
-│   ├── segments.ts       # Segmentation logic, labels, colours, formatKES
+│   ├── segments.ts       # Lifecycle segmentation logic, labels, colours, formatKES
+│   ├── rfmSegments.ts    # RFM (Recency/Frequency/Monetary) scoring + segment copy
 │   └── utils.ts          # Tailwind cn() utility
 └── pages/
     ├── Auth.tsx          # Sign in / sign up page
-    ├── Campaigns.tsx     # Campaign builder + campaign list
-    ├── Dashboard.tsx     # KPI overview + segment charts
-    ├── Exports.tsx       # Export history log
+    ├── Campaigns.tsx     # Campaign builder (RFM targeting) + campaign list
+    ├── Dashboard.tsx     # KPI overview + lifecycle segment charts
+    ├── Exports.tsx       # CSV export history log
+    ├── Reports.tsx       # Curated PDF/Excel report generator
+    ├── RfmSegments.tsx   # RFM segment framework + live member counts
     ├── Members.tsx       # Paginated member table with search + filters
     ├── NotFound.tsx      # 404 page
     └── Upload.tsx        # File upload + data ingestion
@@ -102,6 +107,12 @@ supabase/
 - Bar chart — member distribution across all 6 segments
 - Pie chart — segment share of total member base
 - All segment counts are computed in real-time from member purchase dates
+
+### RFM Segments
+- Behavioural segmentation page (Recency / Frequency / Monetary) — Champions, Loyals, At Risk (RFM), Lapsed, New
+- Live member counts per segment, computed from `rfm_segment`
+- Each segment card shows its RFM signal, what it means, recommended actions, and example tactics
+- This is the model used for Campaign targeting — see [RFM Segmentation vs Lifecycle Segmentation](#rfm-segmentation-vs-lifecycle-segmentation)
 
 ### Members
 - Server-side paginated table (default 20 rows/page — configurable to 50, 100, 200)
@@ -128,19 +139,30 @@ supabase/
 | `email` | No | |
 | `join_date` | No | YYYY-MM-DD or Excel date serial |
 | `store_location` | No | Branch name |
-| `preferred_channel` | No | `in_store` / `online` / `whatsapp` |
+| `preferred_channel` | No | `sms` / `email` |
 | `last_purchase_date` | No | Drives segmentation |
 | `total_purchases` | No | Integer |
 | `total_spend` | No | KES amount |
 | `country` | No | `Kenya` or `Uganda` |
 
 ### Campaigns
-- Create campaigns with: name, objective, target segments (multi-select), channel, notes
-- Campaign list table showing all saved campaigns with export count and created date
-- **Export contacts** button — fetches all members matching target segments, downloads as CSV, logs to `campaign_exports`, increments `export_count` on the campaign
+- Create campaigns with: name, objective, target **RFM segments** (multi-select, 5 options), channel, notes
+- Channel is locked to two options: **SMS** and **Email** (in-store and WhatsApp have been removed — see [RFM Segmentation vs Lifecycle Segmentation](#rfm-segmentation-vs-lifecycle-segmentation) and the Database Schema section for the underlying enum change)
+  - **SMS** campaigns: target RFM segment(s) + message template. Routed implicitly by member country at send time. No live SMS provider is connected — the UI shows an honest "SMS provider integration pending" placeholder.
+  - **Email** campaigns: target RFM segment(s) + subject + body. No live email provider is connected — the UI shows an honest "Email provider integration pending" placeholder. The builder shows a live count of "X of Y targeted members have an email on file" when Email + segments are selected.
+- Campaign list table showing all saved campaigns, channel (SMS/Email badge with icon), export count, and created date
+- **Export contacts** button — fetches all members matching target RFM segments, downloads as CSV, logs to `campaign_exports`, increments `export_count` on the campaign
 
 ### Exports
 - History of all CSV exports across members and campaigns
+
+### Reports
+- Curated PDF/Excel exports for stakeholders: RFM Segment Summary, Lifecycle Segment Summary, Campaign Performance, Member List (filtered)
+- Optional date range filter (where relevant to the report type)
+- PDF reports include the My Goodlife Club logo, report title, generated-on date, and a clean table layout (via `jspdf` + `jspdf-autotable`)
+- Excel reports generated via SheetJS (`xlsx`), same library used for Data Upload parsing
+- Every generated report is logged to the `report_exports` table (type, format, row count, generated by, timestamp)
+- Same access as Exports — no role restriction
 
 ---
 
@@ -169,6 +191,34 @@ Higher priority score = more urgent to re-engage. The Members table is sorted by
 | Churned (Early) | Reactivation — moderate incentive offer |
 | Churned (Deep) | Reactivation — high priority, strong offer |
 | Lapsed 1 Year+ | Win-back or remove from active list |
+
+---
+
+## RFM Segmentation vs Lifecycle Segmentation
+
+The CRM runs **two independent, parallel segmentation models**. Neither replaces the other — they answer different questions and drive different parts of the product.
+
+| | Lifecycle segmentation (`member_segment`) | RFM segmentation (`rfm_segment`) |
+|---|---|---|
+| **Question answered** | "How urgently does this member need re-engagement?" | "How valuable and engaged is this member, behaviourally?" |
+| **Drives** | Dashboard KPIs/charts, Members table segment column + filter, priority score | Campaign builder targeting, RFM Segments page |
+| **Computed from** | `last_purchase_date`, `join_date` | Recency (`last_purchase_date`), Frequency (`total_purchases`), Monetary (`total_spend`) |
+| **Logic location** | `src/lib/segments.ts` | `src/lib/rfmSegments.ts` |
+| **Values** | `active`, `new`, `at_risk`, `churned_60_90`, `churned_90_180`, `churned_180_plus` | `champions`, `loyals`, `at_risk_rfm`, `lapsed`, `new_rfm` |
+
+> **Note:** RFM's "At Risk" segment is labelled **"At Risk (RFM)"** everywhere in the UI and stored as the distinct value `at_risk_rfm`, specifically to avoid confusion with the lifecycle segmentation's own `at_risk` value. They are not the same thing and a member can be in different "risk" states under each model simultaneously.
+
+### RFM segment reference
+
+| Segment | RFM Signal | What it means | Actions |
+|---------|-----------|----------------|---------|
+| **Champions** | High recency, frequency, monetary | Most valuable, most engaged members | Reward, recognise, ask for referrals/reviews |
+| **Loyals** | Good frequency and monetary, not always most recent | Consistent, dependable members | Upsell, loyalty perks, keep them engaged |
+| **At Risk (RFM)** | Low recency, but historically frequent/high spend | Was valuable, has gone quiet | Personalised win-back outreach before they lapse fully |
+| **Lapsed** | Very low recency, regardless of past frequency/monetary | Inactive for an extended period | Strong reactivation incentive or win-back campaign |
+| **New** | Just joined, minimal purchase history yet | Too early to score on frequency/monetary | Onboarding and first-purchase activation |
+
+Members.tsx, its segment filter, and the Dashboard charts are unaffected by RFM segmentation — they continue to use the lifecycle model exclusively.
 
 ---
 
@@ -211,11 +261,15 @@ Core member records. Upserted by `member_id`.
 | `join_date` | date | |
 | `last_purchase_date` | date | |
 | `store_location` | text | |
-| `preferred_channel` | channel_type | `in_store \| online \| whatsapp` |
+| `preferred_channel` | channel_type | `sms \| email` |
 | `total_purchases` | int | |
 | `total_spend` | numeric | KES |
-| `segment` | member_segment | Set at upload time |
+| `segment` | member_segment | Lifecycle segment — set at upload time |
 | `priority_score` | int | 0–100, higher = more urgent |
+| `rfm_segment` | rfm_segment | RFM segment — set at upload time, drives Campaign targeting |
+| `recency_score` | int | 1–5, RFM recency component |
+| `frequency_score` | int | 1–5, RFM frequency component |
+| `monetary_score` | int | 1–5, RFM monetary component |
 | `country` | text | `Kenya \| Uganda` — requires migration* |
 | `created_at` | timestamptz | |
 | `updated_at` | timestamptz | |
@@ -231,12 +285,27 @@ Core member records. Upserted by `member_id`.
 | `id` | uuid | Primary key |
 | `name` | text | |
 | `objective` | text | |
-| `target_segments` | member_segment[] | Array of segments |
-| `channel` | channel_type | |
+| `target_segments` | member_segment[] | **Legacy/deprecated.** Lifecycle segments, no longer used by the Campaign builder UI. Left in place for any historical rows. |
+| `target_rfm_segments` | rfm_segment[] | Array of RFM segments — used by the Campaign builder UI |
+| `channel` | channel_type | `sms \| email` |
 | `notes` | text | |
+| `message_template` | text | SMS message template |
+| `email_subject` | text | Email subject line |
+| `email_body` | text | Email body |
 | `export_count` | int | Auto-incremented on export |
 | `created_by` | uuid | FK → auth.users |
 | `created_at` | timestamptz | |
+
+### `report_exports`
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | uuid | Primary key |
+| `report_type` | text | `rfm_summary \| lifecycle_summary \| campaign_performance \| member_list` |
+| `format` | text | `pdf \| excel` |
+| `generated_by` | uuid | FK → auth.users |
+| `row_count` | int | |
+| `file_reference` | text | Downloaded filename |
+| `generated_at` | timestamptz | |
 
 ### `campaign_exports`
 | Column | Type | Notes |
@@ -270,7 +339,8 @@ Core member records. Upserted by `member_id`.
 ### Enums
 ```sql
 member_segment: active | new | at_risk | churned_60_90 | churned_90_180 | churned_180_plus
-channel_type:   in_store | online | whatsapp
+rfm_segment:    champions | loyals | at_risk_rfm | lapsed | new_rfm
+channel_type:   sms | email
 app_role:       admin | manager | analyst
 ```
 
@@ -343,8 +413,12 @@ The app deploys automatically to **GitHub Pages** on every push to `main`.
    ```sql
    ALTER TABLE members ADD COLUMN IF NOT EXISTS country TEXT CHECK (country IN ('Kenya', 'Uganda'));
    ```
-4. Enable Row Level Security on all tables (already in migrations)
-5. Copy your **Project URL** and **anon (publishable) key** from Project Settings → API
+4. Run the three latest migrations, in order, if not already applied:
+   - `20260630000000_channel_type_sms_email.sql` — removes in-store/WhatsApp, narrows `channel_type` to `sms | email`
+   - `20260630000100_rfm_segmentation.sql` — adds the `rfm_segment` enum/column, RFM score columns, and Campaign `target_rfm_segments`/SMS/Email content columns
+   - `20260630000200_report_exports.sql` — adds the `report_exports` table for the Reports page
+5. Enable Row Level Security on all tables (already in migrations)
+6. Copy your **Project URL** and **anon (publishable) key** from Project Settings → API
 
 ---
 

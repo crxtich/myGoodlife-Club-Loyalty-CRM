@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Upload as UploadIcon, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { classifyMember, ChannelType } from "@/lib/segments";
+import { classifyRfm } from "@/lib/rfmSegments";
 import { useAuth } from "@/contexts/AuthContext";
 import { Database } from "@/integrations/supabase/types";
 import {
@@ -26,7 +27,7 @@ interface UploadSummary {
   errors: { row: number; reason: string }[];
 }
 
-const FIELD_ALIASES: Record<keyof Omit<Insert, "id" | "created_at" | "updated_at" | "segment" | "priority_score" | "total_purchases" | "total_spend">, string[]> = {
+const FIELD_ALIASES: Record<keyof Omit<Insert, "id" | "created_at" | "updated_at" | "segment" | "priority_score" | "total_purchases" | "total_spend" | "rfm_segment" | "recency_score" | "frequency_score" | "monetary_score">, string[]> = {
   member_id: ["member_id", "memberid", "id", "member id", "customer_id", "customer id"],
   name: ["name", "full_name", "customer_name", "full name", "customer name"],
   phone: ["phone", "phone_number", "mobile", "phone number", "msisdn"],
@@ -58,9 +59,8 @@ function normalizeCountry(v: any): "Kenya" | "Uganda" | null {
 function normalizeChannel(v: any): ChannelType | null {
   if (!v) return null;
   const s = String(v).toLowerCase().replace(/[\s-]/g, "_");
-  if (s.includes("store") || s.includes("instore")) return "in_store";
-  if (s.includes("whats")) return "whatsapp";
-  if (s.includes("online") || s.includes("web") || s.includes("app")) return "online";
+  if (s.includes("sms") || s.includes("text") || s.includes("phone") || s.includes("whats")) return "sms";
+  if (s.includes("email") || s.includes("mail")) return "email";
   return null;
 }
 
@@ -147,6 +147,7 @@ const Upload = () => {
         const totalSpend = Number(row.total_spend || row["total spend"] || row.spend || 0);
 
         const { segment, priority } = classifyMember(lastPurchase, joinDate, totalPurchases);
+        const rfm = classifyRfm(lastPurchase, joinDate, totalPurchases, totalSpend);
 
         records.push({
           member_id: memberId,
@@ -162,6 +163,10 @@ const Upload = () => {
           country: normalizeCountry(findField(row, FIELD_ALIASES.country)),
           segment,
           priority_score: priority,
+          rfm_segment: rfm.segment,
+          recency_score: rfm.recency,
+          frequency_score: rfm.frequency,
+          monetary_score: rfm.monetary,
         });
       });
 
@@ -221,7 +226,7 @@ const Upload = () => {
   function downloadTemplate() {
     const template = [{
       member_id: "M001", name: "Jane Mwangi", phone: "+254712345678", email: "jane@example.com",
-      join_date: "2024-06-15", store_location: "Westlands", preferred_channel: "in_store",
+      join_date: "2024-06-15", store_location: "Westlands", preferred_channel: "sms",
       last_purchase_date: "2026-04-01", total_purchases: 12, total_spend: 24500,
     }];
     const csv = Papa.unparse(template);
@@ -324,7 +329,7 @@ const Upload = () => {
             ["email", "Optional"],
             ["join_date", "YYYY-MM-DD or Excel date"],
             ["store_location", "Branch name"],
-            ["preferred_channel", "in_store / online / whatsapp"],
+            ["preferred_channel", "sms / email"],
             ["last_purchase_date", "Drives segmentation"],
             ["total_purchases", "Number"],
             ["total_spend", "KES amount"],

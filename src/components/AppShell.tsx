@@ -2,7 +2,7 @@ import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Users, Upload, Megaphone, FileDown, LogOut,
-  ChevronLeft, ChevronRight, Menu, Settings, User,
+  ChevronLeft, ChevronRight, Menu, Settings, User, Sparkles, FileBarChart,
 } from "lucide-react";
 import logo from "@/assets/goodlife-logo.svg";
 import { Button } from "@/components/ui/button";
@@ -21,10 +21,12 @@ import { cn } from "@/lib/utils";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
+  { to: "/rfm-segments", icon: Sparkles, label: "RFM Segments" },
   { to: "/members", icon: Users, label: "Members" },
   { to: "/upload", icon: Upload, label: "Data Upload" },
   { to: "/campaigns", icon: Megaphone, label: "Campaigns" },
   { to: "/exports", icon: FileDown, label: "Exports" },
+  { to: "/reports", icon: FileBarChart, label: "Reports" },
 ];
 
 const ROLE_COLORS: Record<string, string> = {

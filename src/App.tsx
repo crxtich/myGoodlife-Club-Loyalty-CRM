@@ -8,10 +8,12 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AppShell } from "@/components/AppShell";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
+import RfmSegments from "./pages/RfmSegments";
 import Members from "./pages/Members";
 import Upload from "./pages/Upload";
 import Campaigns from "./pages/Campaigns";
 import Exports from "./pages/Exports";
+import Reports from "./pages/Reports";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -41,10 +43,12 @@ const App = () => (
           <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route path="/" element={<Shell><Dashboard /></Shell>} />
+            <Route path="/rfm-segments" element={<Shell><RfmSegments /></Shell>} />
             <Route path="/members" element={<Shell><Members /></Shell>} />
             <Route path="/upload" element={<Shell requiredRoles={["admin", "manager"]}><Upload /></Shell>} />
             <Route path="/campaigns" element={<Shell requiredRoles={["admin", "manager"]}><Campaigns /></Shell>} />
             <Route path="/exports" element={<Shell><Exports /></Shell>} />
+            <Route path="/reports" element={<Shell><Reports /></Shell>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

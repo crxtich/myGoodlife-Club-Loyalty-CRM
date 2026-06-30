@@ -45,9 +45,8 @@ export const COUNTRY_LABELS: Record<"Kenya" | "Uganda", string> = {
 };
 
 export const CHANNEL_LABELS: Record<ChannelType, string> = {
-  in_store: "In-store",
-  online: "Online",
-  whatsapp: "WhatsApp",
+  sms: "SMS",
+  email: "Email",
 };
 
 export interface MemberRow {

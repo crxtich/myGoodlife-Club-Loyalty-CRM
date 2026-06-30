@@ -50,6 +50,9 @@ export type Database = {
         ]
       }
       campaigns: {
+        // NOTE: target_segments (lifecycle) is retained for legacy rows but no longer
+        // written by the UI. target_rfm_segments (added via RFM migration) is now the
+        // single source of truth for campaign targeting — see README "RFM vs Lifecycle".
         Row: {
           channel: Database["public"]["Enums"]["channel_type"] | null
           created_at: string
@@ -60,6 +63,10 @@ export type Database = {
           notes: string | null
           objective: string | null
           target_segments: Database["public"]["Enums"]["member_segment"][]
+          target_rfm_segments: Database["public"]["Enums"]["rfm_segment"][]
+          message_template: string | null
+          email_subject: string | null
+          email_body: string | null
           updated_at: string
         }
         Insert: {
@@ -72,6 +79,10 @@ export type Database = {
           notes?: string | null
           objective?: string | null
           target_segments?: Database["public"]["Enums"]["member_segment"][]
+          target_rfm_segments?: Database["public"]["Enums"]["rfm_segment"][]
+          message_template?: string | null
+          email_subject?: string | null
+          email_body?: string | null
           updated_at?: string
         }
         Update: {
@@ -84,13 +95,48 @@ export type Database = {
           notes?: string | null
           objective?: string | null
           target_segments?: Database["public"]["Enums"]["member_segment"][]
+          target_rfm_segments?: Database["public"]["Enums"]["rfm_segment"][]
+          message_template?: string | null
+          email_subject?: string | null
+          email_body?: string | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      report_exports: {
+        Row: {
+          id: string
+          report_type: string
+          format: string
+          generated_by: string | null
+          row_count: number
+          file_reference: string | null
+          generated_at: string
+        }
+        Insert: {
+          id?: string
+          report_type: string
+          format: string
+          generated_by?: string | null
+          row_count?: number
+          file_reference?: string | null
+          generated_at?: string
+        }
+        Update: {
+          id?: string
+          report_type?: string
+          format?: string
+          generated_by?: string | null
+          row_count?: number
+          file_reference?: string | null
+          generated_at?: string
         }
         Relationships: []
       }
       members: {
         // NOTE: country column requires a Supabase migration:
         //   ALTER TABLE members ADD COLUMN country TEXT CHECK (country IN ('Kenya', 'Uganda'));
+        // NOTE: rfm_segment + score columns require the RFM migration (see supabase/migrations).
         Row: {
           country: "Kenya" | "Uganda" | null
           created_at: string
@@ -104,6 +150,10 @@ export type Database = {
           preferred_channel: Database["public"]["Enums"]["channel_type"] | null
           priority_score: number
           segment: Database["public"]["Enums"]["member_segment"] | null
+          rfm_segment: Database["public"]["Enums"]["rfm_segment"] | null
+          recency_score: number | null
+          frequency_score: number | null
+          monetary_score: number | null
           store_location: string | null
           total_purchases: number
           total_spend: number
@@ -122,6 +172,10 @@ export type Database = {
           preferred_channel?: Database["public"]["Enums"]["channel_type"] | null
           priority_score?: number
           segment?: Database["public"]["Enums"]["member_segment"] | null
+          rfm_segment?: Database["public"]["Enums"]["rfm_segment"] | null
+          recency_score?: number | null
+          frequency_score?: number | null
+          monetary_score?: number | null
           store_location?: string | null
           total_purchases?: number
           total_spend?: number
@@ -140,6 +194,10 @@ export type Database = {
           preferred_channel?: Database["public"]["Enums"]["channel_type"] | null
           priority_score?: number
           segment?: Database["public"]["Enums"]["member_segment"] | null
+          rfm_segment?: Database["public"]["Enums"]["rfm_segment"] | null
+          recency_score?: number | null
+          frequency_score?: number | null
+          monetary_score?: number | null
           store_location?: string | null
           total_purchases?: number
           total_spend?: number
@@ -284,7 +342,7 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "manager" | "analyst"
-      channel_type: "in_store" | "online" | "whatsapp"
+      channel_type: "sms" | "email"
       member_segment:
         | "active"
         | "at_risk"
@@ -292,6 +350,7 @@ export type Database = {
         | "churned_90_180"
         | "churned_180_plus"
         | "new"
+      rfm_segment: "champions" | "loyals" | "at_risk_rfm" | "lapsed" | "new_rfm"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -420,7 +479,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "manager", "analyst"],
-      channel_type: ["in_store", "online", "whatsapp"],
+      channel_type: ["sms", "email"],
       member_segment: [
         "active",
         "at_risk",
@@ -429,6 +488,7 @@ export const Constants = {
         "churned_180_plus",
         "new",
       ],
+      rfm_segment: ["champions", "loyals", "at_risk_rfm", "lapsed", "new_rfm"],
     },
   },
 } as const
