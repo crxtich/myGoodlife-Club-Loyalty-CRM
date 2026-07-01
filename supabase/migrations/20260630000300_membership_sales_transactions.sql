@@ -44,9 +44,16 @@ CREATE INDEX idx_mst_business_date ON public.membership_sales_transactions(busin
 ALTER TABLE public.membership_sales_transactions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "auth_read_membership_sales_transactions" ON public.membership_sales_transactions
   FOR SELECT TO authenticated USING (true);
+-- INSERT restricted to admin/manager roles. Uses EXISTS against user_roles
+-- directly rather than public.has_role() to avoid a dependency on that
+-- function existing (it may not be present in all deployment environments).
 CREATE POLICY "managers_write_membership_sales_transactions" ON public.membership_sales_transactions
   FOR INSERT TO authenticated WITH CHECK (
-    public.has_role(auth.uid(), 'admin') OR public.has_role(auth.uid(), 'manager')
+    EXISTS (
+      SELECT 1 FROM public.user_roles
+      WHERE user_id = auth.uid()
+        AND role IN ('admin', 'manager')
+    )
   );
 
 -- Reserved for the authoritative loyalty system identifier. The real stable
